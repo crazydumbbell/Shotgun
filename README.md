@@ -138,6 +138,37 @@ Finder가 열리면 끝.
 
 ---
 
+## 업데이트 — 새 버전 받기
+
+shotgun은 Git에서 직접 설치되기 때문에, 새 기능이 들어오면 한 번 더 받아오면 됩니다.
+
+### shotgun CLI 업데이트
+
+```bash
+source ~/.shotgun-venv/bin/activate
+pip install --upgrade --force-reinstall \
+  "git+https://github.com/crazydumbbell/Shotgun.git#subdirectory=packages/shotgun_cli"
+```
+
+> `--force-reinstall`이 핵심. Git 설치는 버전 번호가 그대로라서 `--upgrade` 단독으로는 재설치를 건너뛰는 경우가 있습니다.
+
+### shotgun_runner 업데이트 (본인 Flutter 앱에서)
+
+```bash
+flutter pub upgrade shotgun_runner
+```
+
+`flutter pub get`은 `pubspec.lock`에 박힌 커밋을 그대로 쓰기 때문에 업데이트가 안 됩니다. 반드시 `pub upgrade`.
+
+### 지금 어떤 버전 쓰고 있는지 확인
+
+```bash
+shotgun --version
+cat pubspec.lock | grep -A2 shotgun_runner   # resolved-ref가 커밋 해시
+```
+
+---
+
 ## 자주 막히는 곳
 
 <details>
