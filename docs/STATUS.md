@@ -10,9 +10,50 @@ Phase 1 + 1.5 + 실사용자 피드백 4건 + 목업 품질 업그레이드 4건
 
 ---
 
-## 다음 채팅에서 이어갈 때 (HANDOFF — 2026-05-14)
+## 다음 채팅에서 이어갈 때 (HANDOFF — 2026-05-15, PR-C.2 in-progress)
 
-### 직전 작업: PR-C.1 — `pre_capture` DSL ✅ 완료
+### 진행 중: PR-C.2 — ios_sim multi-locale 🟡 1/7 완료, 백엔드 미수정
+
+**한 줄 (내일 아침 컨텍스트):**
+실제 contract_analyzer 사용자 (= 본인) 가 `locales: [en, ko]` + `advanced.backend: ios_sim`로 돌리다 `ios_sim backend currently supports a single locale per run (PR-B). Multi-locale arrives in PR-C.` 에러로 막혔음 (`backends/ios_sim.py:287-291`). PR-C.2 본격 진입 — **설계 결정: B 옵션 (=`--dart-define=SHOTGUN_LOCALE` + runner 헬퍼)**. 부팅 한 번 / `flutter run` 한 번, locale 전환은 ~1초 deeplink 수준이 목표.
+
+**왜 B인가:** A(부팅 시 NSGlobalDomain locale 주입 + 재부팅)는 사용자 앱 무수정이지만 로케일마다 ~45초 부팅 비용. C(하이브리드)는 구현+테스트 2배. 본인 contract_analyzer는 이미 flutter_localizations 세팅돼 있어 `MaterialApp.locale: ShotgunLocale.fromEnv()` 한 줄이면 됨.
+
+**완료 (커밋 안 됨, 워킹트리에만 있음):**
+- `packages/shotgun_runner/lib/src/shotgun_locale.dart` (신규) — `ShotgunLocale.fromEnv()` / `isActive`. `String.fromEnvironment('SHOTGUN_LOCALE')` 읽어서 `Locale` 반환. `null` 반환이면 시스템 locale 폴백. `ko_KR`, `zh_Hant_HK` 형태 파싱 지원.
+- `packages/shotgun_runner/lib/shotgun_runner.dart` — `ShotgunLocale` export 추가.
+
+**남은 작업 (내일 우선순위 그대로):**
+1. **ios_sim 백엔드 수정** — `_capture_one_device`가 현재 (device → scenes) 두 단계 그룹핑. 이걸 (device → locale → scenes) 세 단계로 바꾸고, **locale마다 `flutter run`을 재시작** (or 사용자 앱이 `SHOTGUN_LOCALE` 변경에 hot-restart로 반응하도록). 의사 코드:
+   ```python
+   for device in ios_devices:
+       boot_once(device)
+       for locale in config.locales:
+           start_flutter_run(..., dart_defines={"SHOTGUN_LOCALE": locale, **app.dart_defines})
+           wait_for_first_frame()
+           for scene in scenes_for(device):
+               openurl(deeplink(scheme, scene.route))
+               pre_capture_actions(scene)
+               screenshot(udid, out_path_with_locale)
+           terminate(flutter_proc)
+   ```
+2. **single-locale guard 제거**: `backends/ios_sim.py:286-291`.
+3. **`_start_flutter_run` 시그니처에 `extra_dart_defines: dict[str,str]` 추가**, `SHOTGUN_LOCALE`은 거기로. `app.dart_defines`와 머지.
+4. **unit test 추가** — `tests/test_ios_sim_backend.py`(파일 없음, 새로 만들 것). 핵심은 subprocess를 mock해서 (a) locale마다 `flutter run`이 다시 호출됨, (b) `--dart-define=SHOTGUN_LOCALE=<lang>`이 cmd에 포함됨. 실제 simctl 호출은 mocking — CI에서 시뮬 부팅 불가.
+5. **README + PHASE2.md 갱신** — `MaterialApp(locale: ShotgunLocale.fromEnv(), ...)` 한 줄 가이드. README의 "진짜 시뮬레이터에서 찍고 싶다" 섹션 바로 아래 multi-locale 서브섹션.
+6. **contract_analyzer로 end-to-end 검증** — `MaterialApp`에 `locale: ShotgunLocale.fromEnv()` 한 줄 추가 → `shotgun capture` → `shotgun_output/ios/6.7/{en,ko}/03_search.png` 둘 다 생성 + 한글 캡션 / 영어 캡션 각각 나오는지 시각 확인.
+7. **lessons.md 업데이트** — "ios_sim에서는 tester가 없으니 dart-define + 앱 쪽 어댑터가 유일한 합리적 locale 주입 경로" 같은 한 줄.
+
+### 결정 트레일 (내일 흔들리지 말 것)
+
+- **A vs B vs C 선택**: B 확정. 사유 위. 만약 한 줄 수정 거부하는 사용자가 나오면 그때 가서 A 추가 — 지금은 over-engineering.
+- **locale 그룹 vs scene 그룹**: locale 그룹이 outer. 사유 — `--dart-define`은 compile-time 상수라 `flutter run` 재시작 없이는 못 바꿈. scene 그룹이 outer면 매 scene마다 flutter 재시작 → 디스아스터.
+- **flutter run 재시작 vs hot-restart**: 재시작. hot-restart는 dart-define을 재평가하지 않음 (이미 컴파일된 상수). 비용 = locale당 ~10-15초 (cold build 한 번 끝난 다음 incremental). 시뮬 부팅 ~45초보다 훨씬 쌈.
+- **runner 헬퍼 위치**: 별도 파일 `src/shotgun_locale.dart`. `shotgun_capture.dart`에 안 합침 — Localizations 책임 분리 + import가 가벼움.
+
+### 그 이전 (HANDOFF — 2026-05-14, PR-C.1 완료)
+
+PR-C.1 — `pre_capture` DSL ✅ 완료
 
 **한 줄**: `keyboard_show` + `wait` 액션을 yaml에 추가하고, AppleScript로 Simulator의 `I/O → Keyboard → Toggle Software Keyboard` 메뉴를 클릭해서 software 키보드가 실제로 화면에 뜨도록 함. 3컷 캡처 + 콜라주 + pytest 32/32 모두 통과.
 
@@ -283,6 +324,6 @@ grep -A1 "app-sandbox" macos/Runner/DebugProfile.entitlements
 ## 새 채팅에서 시작할 때
 
 1. 이 파일 + `docs/PHASE2.md` 읽기 (선택: `docs/SPIKES.md`, `docs/ROADMAP.md`)
-2. 사용자가 새 방향 던지지 않으면, **PR-C.2 (multi-locale)** 부터 제안. 그 다음 PR-C.3 → PR-D → pub.dev/PyPI 배포.
+2. **PR-C.2 multi-locale 작업 재개** — 위 "진행 중: PR-C.2" 섹션의 "남은 작업" 1~7번 순서대로. 워킹트리에 `shotgun_locale.dart` + `shotgun_runner.dart` 두 파일 변경분이 미커밋 상태로 남아있음 (`git status`로 확인). 설계 결정(B 옵션)은 이미 확정 — 흔들지 말고 그대로 진행.
 3. 회귀 빠른 확인 (Phase 1 macos_host): `pytest packages/shotgun_cli` + `cd examples/notes_app && shotgun capture && shotgun compose`
 4. 회귀 빠른 확인 (Phase 2 ios_sim): `cd examples/contract_analyzer && xcrun simctl shutdown all && rm -rf shotgun_output* && shotgun capture && shotgun compose && shotgun compose-grid` — `shotgun_output/ios/6.7/ko/03_search.png`에 시스템 키보드 있는지 확인

@@ -18,3 +18,4 @@ library;
 
 export 'src/shotgun_capture.dart'
     show ShotgunCapture, ShotgunDevice, ShotgunRouterHandler;
+export 'src/shotgun_locale.dart' show ShotgunLocale;
