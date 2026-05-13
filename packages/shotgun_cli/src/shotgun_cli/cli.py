@@ -9,7 +9,8 @@ import click
 from . import __version__
 from .capture import CaptureError, run_capture
 from .compose import (
-    Preset, StatusBarOptions, compose as compose_image, preset_by_name,
+    Preset, StatusBarOptions, compose as compose_image, compose_grid,
+    preset_by_name,
 )
 from .config import load_config
 
@@ -114,7 +115,7 @@ def capture(
 @click.option(
     "--preset", "preset_name", default=None,
     help="Preset name for single-image mode "
-         "(vivid_gradient, minimal, feature_callout).",
+         "(vivid_gradient, minimal, feature_callout, studio).",
 )
 def compose_cmd(
     screenshot: Path | None,
@@ -145,7 +146,7 @@ def compose_cmd(
         except KeyError:
             raise click.UsageError(
                 f"unknown theme.preset {config.theme.preset!r}. "
-                "Valid: vivid_gradient, minimal, feature_callout."
+                "Valid: vivid_gradient, minimal, feature_callout, studio."
             ) from None
 
         entries = config.iter_matrix()
@@ -198,10 +199,66 @@ def compose_cmd(
     except KeyError:
         raise click.UsageError(
             f"unknown preset {preset_name!r}. "
-            "Valid: vivid_gradient, minimal, feature_callout."
+            "Valid: vivid_gradient, minimal, feature_callout, studio."
         ) from None
     result = compose_image(screenshot, output, caption_text, preset)
     click.echo(f"wrote {result}")
+
+
+@main.command("compose-grid")
+@click.option(
+    "--config", "config_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Path to shotgun.yaml (default: ./shotgun.yaml).",
+)
+@click.option(
+    "--cols", default=4, show_default=True, type=int,
+    help="Phones per row in the grid.",
+)
+@click.option(
+    "-o", "--output", "output_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Output PNG. Defaults to `<composed_root>/_grid.png`.",
+)
+@click.option(
+    "--locale", default=None,
+    help="Which locale's composed images to use. Defaults to the first "
+         "locale in shotgun.yaml.",
+)
+def compose_grid_cmd(
+    config_path: Path | None, cols: int, output_path: Path | None,
+    locale: str | None,
+) -> None:
+    """Tile composed images into a single multi-phone collage."""
+    cfg_path, project_root = _resolve_config(config_path)
+    config = load_config(cfg_path)
+    capture_root = (project_root / config.output.dir).resolve()
+    composed_root = capture_root.parent / f"{capture_root.name}_composed"
+    if not composed_root.exists():
+        raise click.UsageError(
+            f"no composed images at {composed_root}. run `shotgun compose` first."
+        )
+    chosen_locale = locale or config.locales[0]
+
+    entries = [
+        e for e in config.iter_matrix() if e.locale == chosen_locale
+    ]
+    paths: list[Path] = []
+    for entry in entries:
+        candidate = (
+            composed_root / entry.platform / entry.device.name / entry.locale
+            / f"{entry.index:02d}_{entry.scene.id}.png"
+        )
+        if candidate.exists():
+            paths.append(candidate)
+    if not paths:
+        raise click.UsageError(
+            f"no composed PNGs found for locale {chosen_locale!r}."
+        )
+
+    out = output_path or (composed_root / "_grid.png")
+    compose_grid(paths, out, cols=cols)
+    click.echo(f"wrote {out} ({len(paths)} phones, {cols} cols)")
 
 
 _STARTER_YAML = """\

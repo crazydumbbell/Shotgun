@@ -6,7 +6,7 @@
 
 ## 한 줄 요약
 
-Phase 1 + 1.5 끝 + "짧게 손볼 것" 4건 + "중간 크기" 5건 모두 완료. `shotgun init / capture / compose` 풀 파이프라인이 `shotgun.yaml` 한 장으로 돌아가고, declarative router hook · 3종 compose preset · iOS status bar normalize · Linux/CI 폰트 경로 · GitHub Actions CI까지 들어옴. notes_app 매트릭스 12/12 회귀 없음 + Python 단위테스트 18/18. 다음은 Phase 2 (pub.dev/PyPI 배포, GIF 데모, golden-image visual regression).
+Phase 1 + 1.5 + 실사용자 피드백 4건 + 목업 품질 업그레이드 4건 모두 완료. `shotgun init / capture / compose / compose-grid` 풀 파이프라인이 `shotgun.yaml` 한 장으로 돌아가고, 사실적 device frame (CC0 PommePlate) · 4종 compose preset (`vivid_gradient` / `minimal` / `feature_callout` / `studio`) · multi-phone 콜라주 · declarative router hook · iOS status bar normalize까지 들어옴. notes_app 매트릭스 12/12 회귀 없음 + Python 단위테스트 32/32. 다음은 Phase 2 (pub.dev/PyPI 배포, GIF 데모, golden-image visual regression, Android frame).
 
 ---
 
@@ -23,6 +23,7 @@ shotgun capture               # → integration_test/_shotgun_generated.dart cod
                               #   → shotgun_output/<platform>/<device>/<locale>/NN_<scene>.png
 shotgun compose               # → shotgun_output_composed/... 매트릭스 컴포지트
 shotgun compose <raw> <out>   # 단일 이미지 모드 (yaml 없을 때)
+shotgun compose-grid          # → shotgun_output_composed/_grid.png (멀티-phone 콜라주)
 ```
 
 ### 검증된 매트릭스 — examples/notes_app/
@@ -168,6 +169,13 @@ await ShotgunCapture.capture(
 - ✅ **main() 부트스트랩 누락**: `app.bootstrap_fn` (setup_file의 async 함수명) 옵션 추가. 각 `testWidgets` 본문에서 `pumpWidget` 전에 `await _shotgun_setup.<fn>()` 호출. 사용자는 `dotenv.load()` / `MobileAds.initialize()` / `Firebase.initializeApp()`를 거기 모아두면 됨. `bootstrap_fn`만 설정하고 `setup_file`이 비면 Pydantic 단계에서 거부.
 - ✅ **캡처 로그 노이즈**: macOS의 `Failed to foreground app`, pdfx류 `scanHexInt32 deprecated` 등 알려진 무해 경고를 `_BENIGN_LINE_SUBSTRINGS`로 분류하고 기본 숨김. `shotgun capture -v / --verbose`로 켤 수 있음. 실제 에러(`EXCEPTION CAUGHT`, `Couldn't find` 등)는 절대 숨기지 않음.
 - ✅ **실패 시 1줄 요약**: capture가 subprocess 출력을 스트리밍하면서 `+N -1 : ios/6.7/en/home [E]` 같은 라인을 잡아 어떤 shot에서 죽었는지 추적하고, 그 뒤 ~수십줄에서 raw stack frame을 제외한 첫 framework 에러 라인을 picks. 종료 시 stderr에 `[shotgun] failed at ios/6.7/en/home — NotInitializedError ...` 한 줄 + 기존 raw stack도 그대로 남김.
+
+### 목업 품질 업그레이드 (2026-05-13) — 모두 완료
+- ✅ **사실적 device frame**: PommePlate(CC0)에서 iPhone XS Max/11 Pro Max + SE 2nd gen PNG 3개를 `packages/shotgun_cli/src/shotgun_cli/assets/devices/`에 동봉. `_FRAME_REGISTRY`에 inner screen rect 하드코딩 (스캔 헬퍼로 측정). `PhoneConfig.frame_id` 기본값 `"iphone_notch_space_gray"`. frame PNG 로드 시 screen rect를 알파 0으로 punch-out → 그 자리에 screenshot이 보이고, frame은 베젤/노치/유리 하이라이트만 위에 덮음. `frame_id=None`이면 기존 synthetic bezel 경로(`_render_phone_synthetic`)로 fallback.
+- ✅ **`studio` preset**: 오프화이트 배경 + phone 위, 캡션 phone 아래에 작게. 마그니픽 lookbook 스타일. `compose()`에 캡션 below 분기 (`top_ratio > 0.5`이면 phone을 위에 놓고 캡션을 phone 아래에 anchor).
+- ✅ **shadow / caption 톤다운**: `vivid_gradient`의 shadow_blur 90→130, shadow_opacity 120→75, caption stroke_opacity 60→30, max_height_ratio 0.18→0.13. minimal도 비슷하게 다시 튜닝. 캡션이 더 이상 화면을 짓누르지 않음.
+- ✅ **`shotgun compose-grid`**: 매트릭스의 composed PNG를 자동 수집해 4-column 콜라주 한 장으로 출력 (`_grid.png`). 각 phone에 고정 시퀀스 회전 ±5°와 cast shadow. `--cols`, `-o`, `--locale` 옵션. 출력 재현성 보장(랜덤 시드 없음).
+- ✅ **자산 패키징**: `pyproject.toml`의 `[tool.setuptools.package-data]`에 `shotgun_cli.assets.devices`. `importlib.resources`로 로드해서 editable/wheel/sdist 모두에서 동작.
 
 ### 큰 것 (Phase 2)
 - pub.dev / PyPI 첫 배포

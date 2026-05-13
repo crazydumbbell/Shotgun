@@ -99,7 +99,7 @@ class DevicesConfig(BaseModel):
         return self
 
 
-_VALID_PRESETS = {"vivid_gradient", "minimal", "feature_callout"}
+_VALID_PRESETS = {"vivid_gradient", "minimal", "feature_callout", "studio"}
 
 
 class ThemeConfig(BaseModel):

@@ -41,3 +41,6 @@ Repository = "https://github.com/crazydumbbell/Shotgun"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"shotgun_cli.assets.devices" = ["*.png", "LICENSE", "NOTICE.md"]

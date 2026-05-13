@@ -18,6 +18,7 @@ import math
 import os
 import sys
 from dataclasses import dataclass, field
+from importlib import resources
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -58,6 +59,12 @@ class PhoneConfig:
     scale: float = 0.74                            # phone width / canvas width
     bottom_margin_ratio: float = 0.04
     caption_to_phone_gap_ratio: float = 0.025
+    # When `frame_id` is set, an asset PNG (see _FRAME_REGISTRY) is layered
+    # on top of the screenshot — bezel/notch/glass come from a real device
+    # render. When None, the legacy code path draws a synthetic bezel +
+    # notch with the fields below. `frame_id` is the preferred mode; the
+    # synthetic path remains for `--no-frame` debugging and as a fallback.
+    frame_id: str | None = "iphone_notch_space_gray"
     bezel_color: tuple[int, int, int] = (12, 12, 14)
     bezel_thickness_ratio: float = 0.018
     outer_corner_radius_ratio: float = 0.085
@@ -123,7 +130,26 @@ def preset_by_name(name: str) -> Preset:
 
 
 def _preset_vivid_gradient() -> Preset:
-    return Preset(name="vivid_gradient")
+    """Bold gradient backdrop, phone above caption.
+
+    Tuned so a realistic device frame (default `frame_id`) feels at home
+    on the gradient: scale slightly down so the phone breathes, soften
+    caption stroke so it doesn't fight the frame, and use a longer
+    shadow blur for a believable cast.
+    """
+    return Preset(
+        name="vivid_gradient",
+        caption=CaptionConfig(
+            stroke_opacity=30,          # was 60 — frame doesn't need a heavy halo
+            max_height_ratio=0.13,      # was 0.18 — let phone breathe
+        ),
+        phone=PhoneConfig(
+            scale=0.66,                 # was 0.74 — real frame reads bigger
+            shadow_blur=130,            # was 90 — softer cast
+            shadow_opacity=75,          # was 120
+            shadow_offset_y=55,         # was 40
+        ),
+    )
 
 
 def _preset_minimal() -> Preset:
@@ -138,14 +164,16 @@ def _preset_minimal() -> Preset:
             stroke_color=(0, 0, 0),
             stroke_opacity=0,         # no stroke on light backgrounds
             stroke_divisor=999,
+            max_height_ratio=0.12,
         ),
-        phone=PhoneConfig(shadow_opacity=80, shadow_blur=110),
+        phone=PhoneConfig(scale=0.66, shadow_opacity=70, shadow_blur=140),
     )
 
 
 def _preset_feature_callout() -> Preset:
     """vivid_gradient + decorative ring + arrow pointing at the phone."""
-    base = Preset(name="feature_callout")
+    base = _preset_vivid_gradient()
+    base.name = "feature_callout"
     base.callout = CalloutConfig(
         enabled=True,
         color=(255, 209, 102),
@@ -158,11 +186,106 @@ def _preset_feature_callout() -> Preset:
     return base
 
 
+def _preset_studio() -> Preset:
+    """Off-white backdrop, phone above, small dark caption below.
+
+    Mirrors the lookbook style of marketing mockup packs (Magnific,
+    Mockey) — soft canvas, hero phone, restrained typography. Pairs
+    naturally with the default device frame.
+    """
+    return Preset(
+        name="studio",
+        gradient=None,
+        highlight=None,
+        background=(241, 242, 245),
+        caption=CaptionConfig(
+            color=(28, 30, 38),
+            stroke_color=(0, 0, 0),
+            stroke_opacity=0,
+            stroke_divisor=999,
+            top_ratio=0.80,           # caption-below-phone (see compose())
+            max_height_ratio=0.08,
+            side_padding_ratio=0.10,
+            line_spacing=8,
+        ),
+        phone=PhoneConfig(
+            scale=0.62,
+            bottom_margin_ratio=0.16,
+            caption_to_phone_gap_ratio=0.03,
+            shadow_blur=160,
+            shadow_opacity=55,
+            shadow_offset_y=80,
+        ),
+    )
+
+
 _PRESETS: dict[str, "callable[[], Preset]"] = {  # type: ignore[type-arg]
     "vivid_gradient": _preset_vivid_gradient,
     "minimal": _preset_minimal,
     "feature_callout": _preset_feature_callout,
+    "studio": _preset_studio,
 }
+
+
+# ───────────────────────────────────────────────────────
+# Device frame assets
+# ───────────────────────────────────────────────────────
+# Each entry: (asset_filename, screen_rect)
+# `screen_rect` is (left, top, width, height) measured against the
+# asset's native pixel dimensions. Scales linearly with frame width.
+#
+# Rects were detected by scanning the PNG for the largest uniform-dark
+# rectangle (see assets/devices/NOTICE.md). If you add a new frame,
+# run scripts/measure_frame_rect.py or open a python REPL and use the
+# helper at the bottom of this module to print the rect.
+_FRAME_REGISTRY: dict[str, dict] = {
+    "iphone_notch_space_gray": {
+        "file": "iphone_notch_space_gray.png",
+        "screen_rect": (40, 29, 1332, 2721),   # native: 1411x2840
+    },
+    "iphone_notch_silver": {
+        "file": "iphone_notch_silver.png",
+        "screen_rect": (40, 29, 1332, 2721),   # native: 1411x2840
+    },
+    "iphone_classic_black": {
+        "file": "iphone_classic_black.png",
+        "screen_rect": (18, 14, 829, 1567),    # native: 866x1764
+    },
+}
+
+
+_FRAME_CACHE: dict[str, Image.Image] = {}
+
+
+def _load_frame(frame_id: str) -> Image.Image:
+    """Return the cached frame PNG for `frame_id`, with the screen area
+    cut out so it can be composited on top of a screenshot.
+
+    PommePlate's PNGs render the screen as a filled dark rectangle —
+    pasting the frame on top of a screenshot would just cover it. We
+    punch out the screen rect (set alpha to 0) so the screenshot below
+    shows through, while the bezel/notch/glass stay opaque.
+
+    Raises KeyError if the id is unknown — callers should surface as a
+    config error.
+    """
+    if frame_id in _FRAME_CACHE:
+        return _FRAME_CACHE[frame_id]
+    spec = _FRAME_REGISTRY[frame_id]
+    asset_path = resources.files("shotgun_cli.assets.devices").joinpath(spec["file"])
+    with resources.as_file(asset_path) as p:
+        img = Image.open(p).convert("RGBA").copy()
+    # Punch out the screen rect.
+    rx, ry, rw, rh = spec["screen_rect"]
+    cutout = Image.new("RGBA", (rw, rh), (0, 0, 0, 0))
+    img.paste(cutout, (rx, ry))
+    _FRAME_CACHE[frame_id] = img
+    return img
+
+
+def list_frame_ids() -> list[str]:
+    """Frame ids available out of the box. Stable enough to expose to users."""
+    return sorted(_FRAME_REGISTRY)
 
 
 # ───────────────────────────────────────────────────────
@@ -357,6 +480,64 @@ def _drop_shadow(img: Image.Image, blur: int, opacity: int) -> Image.Image:
 
 
 def _render_phone(
+    screenshot: Image.Image, outer_w: int, cfg: PhoneConfig,
+) -> Image.Image:
+    """Compose a phone-framed image at `outer_w` pixels wide.
+
+    Routes to the asset-based path when `cfg.frame_id` is set, falling
+    back to the synthetic bezel+notch drawer when it's None.
+    """
+    if cfg.frame_id is not None:
+        return _render_phone_framed(screenshot, outer_w, cfg.frame_id)
+    return _render_phone_synthetic(screenshot, outer_w, cfg)
+
+
+def _render_phone_framed(
+    screenshot: Image.Image, outer_w: int, frame_id: str,
+) -> Image.Image:
+    """Paste the screenshot inside a CC0 device-frame PNG.
+
+    The screen rect (where to paste the screenshot) is registered per
+    frame in `_FRAME_REGISTRY`. We scale the frame to `outer_w`, scale
+    the rect with the same factor, paste the screenshot underneath, and
+    overlay the frame so its rounded corners / notch / glass highlights
+    sit on top.
+    """
+    spec = _FRAME_REGISTRY[frame_id]
+    frame = _load_frame(frame_id)
+    fw, fh = frame.size
+    outer_h = round(outer_w * fh / fw)
+    scale = outer_w / fw
+    frame_scaled = frame.resize((outer_w, outer_h), Image.LANCZOS)
+
+    rx, ry, rw, rh = spec["screen_rect"]
+    sx, sy = round(rx * scale), round(ry * scale)
+    sw, sh = round(rw * scale), round(rh * scale)
+
+    # Letterbox the screenshot into the screen rect, preserving aspect
+    # ratio. The screen rect aspect comes from the *physical* device,
+    # while the screenshot can be any aspect (1290x2796 ≠ 1332x2721
+    # exactly). Pillar/letterbox with black so the edges read as bezel
+    # rather than transparent.
+    out = Image.new("RGBA", (outer_w, outer_h), (0, 0, 0, 0))
+    screen_layer = Image.new("RGBA", (sw, sh), (0, 0, 0, 255))
+    shot_aspect = screenshot.size[1] / screenshot.size[0]
+    rect_aspect = sh / sw
+    if shot_aspect >= rect_aspect:
+        # screenshot is taller → fit height, pillar-box left/right
+        new_h = sh
+        new_w = round(sh / shot_aspect)
+    else:
+        new_w = sw
+        new_h = round(sw * shot_aspect)
+    resized = screenshot.resize((new_w, new_h), Image.LANCZOS).convert("RGBA")
+    screen_layer.alpha_composite(resized, ((sw - new_w) // 2, (sh - new_h) // 2))
+    out.paste(screen_layer, (sx, sy))
+    out.alpha_composite(frame_scaled)
+    return out
+
+
+def _render_phone_synthetic(
     screenshot: Image.Image, outer_w: int, cfg: PhoneConfig,
 ) -> Image.Image:
     sw, sh = screenshot.size
@@ -633,15 +814,73 @@ def compose(
     else:
         canvas = bg.convert("RGBA")
 
-    # 2. caption
+    # 2. layout — caption above phone (default) or below (when the preset's
+    # top_ratio sits past the canvas midpoint, e.g. `studio`). Caption is
+    # measured first either way so we know how much vertical space the
+    # phone has to work with.
     cc = p.caption
+    pc = p.phone
     draw = ImageDraw.Draw(canvas)
     max_w = int(canvas_w * (1 - 2 * cc.side_padding_ratio))
     max_h = int(canvas_h * cc.max_height_ratio)
     font, bbox = _fit_font(draw, caption, max_w, max_h, cc.line_spacing)
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
-    cap_top = int(canvas_h * cc.top_ratio)
+    caption_below = cc.top_ratio > 0.5
+
+    # 3. phone — figure out its outer rect. When using a registered frame
+    # the aspect comes from the frame's screen rect (so the device looks
+    # correctly proportioned); otherwise from the raw screenshot aspect
+    # (legacy synthetic path).
+    if pc.frame_id is not None:
+        spec = _FRAME_REGISTRY[pc.frame_id]
+        frame = _load_frame(pc.frame_id)
+        fw, fh = frame.size
+        phone_aspect = fh / fw
+    else:
+        # synthetic path: aspect = screenshot + symmetric bezel.
+        bezel_ratio = pc.bezel_thickness_ratio
+        shot_aspect = screenshot.size[1] / screenshot.size[0]
+        # outer_h / outer_w = (inner_h + 2*bezel) / (inner_w + 2*bezel)
+        # with inner_h = inner_w * shot_aspect; inner_w = outer_w(1-2b)
+        # → simplifies to:
+        phone_aspect = (1 - 2 * bezel_ratio) * shot_aspect + 2 * bezel_ratio
+
+    outer_w = int(canvas_w * pc.scale)
+    gap = int(canvas_h * pc.caption_to_phone_gap_ratio)
+    bottom_margin = int(canvas_h * pc.bottom_margin_ratio)
+    top_margin = int(canvas_h * pc.bottom_margin_ratio)  # symmetric top
+
+    if caption_below:
+        cap_top = int(canvas_h * cc.top_ratio)
+        avail_h = cap_top - gap - top_margin
+    else:
+        cap_top = int(canvas_h * cc.top_ratio)
+        cap_bottom = cap_top + text_h
+        avail_h = canvas_h - cap_bottom - gap - bottom_margin
+
+    outer_h = int(outer_w * phone_aspect)
+    if outer_h > avail_h and avail_h > 0:
+        outer_h = avail_h
+        outer_w = int(outer_h / phone_aspect)
+
+    phone = _render_phone(screenshot, outer_w, pc)
+    shadow = _drop_shadow(phone, pc.shadow_blur, pc.shadow_opacity)
+
+    phone_x = (canvas_w - outer_w) // 2
+    if caption_below:
+        phone_y = top_margin
+    else:
+        phone_y = cap_bottom + gap
+
+    canvas.alpha_composite(shadow, (phone_x, phone_y + pc.shadow_offset_y))
+    canvas.alpha_composite(phone, (phone_x, phone_y))
+
+    # 4. draw caption text. For caption-below, recompute cap_top now
+    # that we know where the phone ended up — anchor it `gap` below the
+    # phone instead of trusting the preset's top_ratio to align exactly.
+    if caption_below:
+        cap_top = phone_y + outer_h + gap
     tx = (canvas_w - text_w) // 2 - bbox[0]
     ty = cap_top - bbox[1]
     stroke_w = max(1, font.size // cc.stroke_divisor)
@@ -651,36 +890,95 @@ def compose(
         stroke_width=stroke_w,
         stroke_fill=cc.stroke_color + (cc.stroke_opacity,),
     )
-    cap_bottom = cap_top + text_h
 
-    # 3. phone (sized to fit remaining space)
-    pc = p.phone
-    gap = int(canvas_h * pc.caption_to_phone_gap_ratio)
-    bottom_margin = int(canvas_h * pc.bottom_margin_ratio)
-    avail_h = canvas_h - cap_bottom - gap - bottom_margin
-
-    outer_w = int(canvas_w * pc.scale)
-    bezel = int(outer_w * pc.bezel_thickness_ratio)
-    inner_w = outer_w - 2 * bezel
-    aspect = screenshot.size[1] / screenshot.size[0]
-    outer_h = int(inner_w * aspect) + 2 * bezel
-    if outer_h > avail_h:
-        outer_h = avail_h
-        inner_h = outer_h - 2 * bezel
-        inner_w = int(inner_h / aspect)
-        outer_w = inner_w + 2 * bezel
-
-    phone = _render_phone(screenshot, outer_w, pc)
-    shadow = _drop_shadow(phone, pc.shadow_blur, pc.shadow_opacity)
-
-    phone_x = (canvas_w - outer_w) // 2
-    phone_y = cap_bottom + gap
-    canvas.alpha_composite(shadow, (phone_x, phone_y + pc.shadow_offset_y))
-    canvas.alpha_composite(phone, (phone_x, phone_y))
-
-    # 4. decorative callouts (rings, arrows) — drawn on top so they
+    # 5. decorative callouts (rings, arrows) — drawn on top so they
     # frame the phone rather than being hidden behind it.
     _draw_callout(canvas, p.callout)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    canvas.convert("RGB").save(output_path, "PNG", optimize=True)
+    return output_path
+
+
+# ───────────────────────────────────────────────────────
+# Multi-phone collage
+# ───────────────────────────────────────────────────────
+# Tilt angles cycle through this fixed sequence. Output reproducibility
+# beats variety — a stable composition lets users diff regenerations
+# without spurious pixel churn.
+_GRID_TILT_DEGREES: tuple[float, ...] = (-5.0, 3.5, -2.0, 5.5, -3.0, 2.5, -4.5, 4.0)
+
+# Default canvas. Roughly App Store wide format with extra height for
+# captions or branding the user might layer in Figma later.
+_GRID_DEFAULT_CANVAS = (3200, 2400)
+
+
+def compose_grid(
+    composed_paths: list[Path],
+    output_path: Path,
+    *,
+    cols: int = 4,
+    canvas_size: tuple[int, int] = _GRID_DEFAULT_CANVAS,
+    background: tuple[int, int, int] = (241, 242, 245),
+    shadow_blur: int = 110,
+    shadow_opacity: int = 70,
+    overlap: float = 0.10,
+) -> Path:
+    """Tile several already-composed phone shots onto one wide canvas.
+
+    Each phone is rotated by a fixed angle from `_GRID_TILT_DEGREES`
+    (deterministic — same input always yields the same output), given
+    its own cast shadow, and overlapped slightly so the grid reads as a
+    composition rather than a contact sheet.
+
+    `composed_paths` should be marketing-ready images from `compose()`
+    (i.e. each already has its own framed phone on its own background).
+    The grid extracts the phone region by treating every pixel that
+    doesn't match the input image's background-corner color as foreground
+    — good enough for the studio / minimal presets where corners are
+    truly empty backdrop. For vivid_gradient inputs the whole composed
+    image including its gradient is tiled as-is.
+    """
+    if not composed_paths:
+        raise ValueError("compose_grid: composed_paths is empty")
+    cols = max(1, cols)
+    rows = math.ceil(len(composed_paths) / cols)
+
+    canvas = Image.new("RGBA", canvas_size, background + (255,))
+    cw, ch = canvas_size
+
+    # Lay out a uniform grid; each cell holds one phone (with shadow
+    # bleed). We let phones overflow cell bounds for the overlap.
+    cell_w = cw / (cols - (cols - 1) * overlap) if cols > 1 else cw
+    cell_h = ch / (rows - (rows - 1) * overlap) if rows > 1 else ch
+    # Make individual phones a touch smaller than the cell so cast
+    # shadows have room before hitting neighbors.
+    phone_w_target = int(cell_w * 0.80)
+
+    for i, path in enumerate(composed_paths):
+        col = i % cols
+        row = i // cols
+        cx = int(col * cell_w * (1 - overlap) + cell_w / 2)
+        cy = int(row * cell_h * (1 - overlap) + cell_h / 2)
+        tilt = _GRID_TILT_DEGREES[i % len(_GRID_TILT_DEGREES)]
+
+        img = Image.open(path).convert("RGBA")
+        scale = phone_w_target / img.size[0]
+        scaled = img.resize(
+            (max(1, int(img.size[0] * scale)), max(1, int(img.size[1] * scale))),
+            Image.LANCZOS,
+        )
+        # Rotate with expand so corners aren't clipped; this also picks
+        # up the screenshot's own background — we don't try to mask it.
+        rotated = scaled.rotate(tilt, resample=Image.BICUBIC, expand=True)
+        # Build a shadow from the rotated alpha. Composed images are
+        # fully opaque rectangles, so the shadow is a tilted rect.
+        shadow = _drop_shadow(rotated, shadow_blur, shadow_opacity)
+
+        ox = cx - rotated.size[0] // 2
+        oy = cy - rotated.size[1] // 2
+        canvas.alpha_composite(shadow, (ox + 12, oy + 32))
+        canvas.alpha_composite(rotated, (ox, oy))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     canvas.convert("RGB").save(output_path, "PNG", optimize=True)

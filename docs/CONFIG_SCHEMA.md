@@ -70,15 +70,21 @@ locales: [ko, en, ja]
 # theme: branding tokens used by presets
 # ───────────────────────────────────────────────────────
 theme:
-  preset: vivid_gradient          # vivid_gradient | minimal | feature_callout
+  preset: vivid_gradient          # vivid_gradient | minimal | feature_callout | studio
   gradient: ["#667EEA", "#764BA2"]
   font: "Pretendard"              # falls back to Inter if not installed
   accent: "#FFD166"
 
 # Built-in presets:
 #   vivid_gradient   — bold gradient bg + radial highlight + framed phone
-#   minimal          — clean light bg, dark caption, soft phone shadow
+#   minimal          — clean light bg, dark caption above, soft phone shadow
 #   feature_callout  — vivid_gradient + decorative ring + arrow
+#   studio           — off-white bg + small dark caption *below* the phone
+#                      (lookbook style — pairs with `shotgun compose-grid`)
+#
+# All presets use a CC0 device-frame PNG by default (PommePlate, iPhone 11
+# Pro Max bezel). Set `phone.frame_id: null` in advanced config to fall
+# back to the synthetic bezel+notch drawer.
 
 # ───────────────────────────────────────────────────────
 # scenes: the actual screens you want

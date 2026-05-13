@@ -82,3 +82,70 @@ def test_unknown_preset_raises():
     import pytest
     with pytest.raises(KeyError):
         preset_by_name("does_not_exist")
+
+
+def test_studio_renders(fake_screenshot: Path, tmp_path: Path):
+    """Studio preset uses an off-white solid background, caption below
+    the phone. Verify both: canvas size unchanged, and the top strip
+    (above where the phone lands) is the studio background color."""
+    img = _render(fake_screenshot, tmp_path / "studio.png", "studio")
+    assert img.size == (1290, 2796)
+    # Top-right corner — definitely above the phone, definitely not
+    # caption (caption is below).
+    patch = list(img.crop((1100, 50, 1200, 150)).getdata())
+    expected = (241, 242, 245)
+    for r, g, b in patch[:10]:
+        assert abs(r - expected[0]) <= 3
+        assert abs(g - expected[1]) <= 3
+        assert abs(b - expected[2]) <= 3
+
+
+def test_frame_default_keeps_screen_pixels(fake_screenshot: Path, tmp_path: Path):
+    """When a frame asset is used, the screenshot must still be visible
+    through the cut-out screen rect — not covered by the frame PNG.
+
+    Renders the same screenshot twice: once with the default frame,
+    once with frame_id=None (synthetic bezel). Both should show the
+    light top half of the fake_screenshot inside the phone region.
+    """
+    from shotgun_cli.compose import Preset, PhoneConfig, compose
+
+    out_framed = tmp_path / "framed.png"
+    out_synth = tmp_path / "synth.png"
+    compose(fake_screenshot, out_framed, "Caption", Preset(name="vivid_gradient"))
+    no_frame = Preset(name="x", phone=PhoneConfig(frame_id=None))
+    compose(fake_screenshot, out_synth, "Caption", no_frame)
+
+    framed = Image.open(out_framed)
+    synth = Image.open(out_synth)
+    # Pick a vertical column down the phone center; count light pixels
+    # (the top half of fake_screenshot is (245,247,250)). Both renders
+    # should hit a similar count — proves the frame path didn't blot
+    # the screen out with dark frame pixels.
+    def light_pixels(img: Image.Image) -> int:
+        col = img.crop((640, 0, 650, 2796)).convert("RGB")
+        return sum(
+            1 for r, g, b in col.getdata()
+            if r > 220 and g > 220 and b > 220
+        )
+    assert light_pixels(framed) > 200, "framed render shows no screenshot"
+    assert light_pixels(synth) > 200, "synthetic render shows no screenshot"
+
+
+def test_compose_grid_smoke(fake_screenshot: Path, tmp_path: Path):
+    """compose_grid should tile multiple composed PNGs onto one canvas."""
+    from shotgun_cli.compose import compose_grid
+
+    # Produce 4 throwaway composed images.
+    paths = []
+    for i in range(4):
+        p = tmp_path / f"comp_{i}.png"
+        _render(fake_screenshot, p, "minimal")
+        paths.append(p)
+
+    out = tmp_path / "grid.png"
+    compose_grid(paths, out, cols=4)
+    grid = Image.open(out)
+    # Default canvas size in compose_grid.
+    assert grid.size == (3200, 2400)
+    assert grid.mode == "RGB"
