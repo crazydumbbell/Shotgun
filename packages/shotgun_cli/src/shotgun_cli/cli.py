@@ -283,6 +283,14 @@ _STARTER_YAML = """\
 # shotgun.yaml — App Store / Play Store screenshot config.
 # See docs/CONFIG_SCHEMA.md for the full spec.
 
+# Capture backend. Default is `macos_host` (fast, widget-tree only).
+# Uncomment below to use the real iOS Simulator instead — needed for
+# system keyboard, real status bar / Dynamic Island, share sheets, etc.
+#
+# advanced:
+#   backend: ios_sim
+#   scheme: shotgun         # URL scheme; register in ios/Runner/Info.plist
+
 app:
   entry: lib/main.dart
   root_widget: MyApp
