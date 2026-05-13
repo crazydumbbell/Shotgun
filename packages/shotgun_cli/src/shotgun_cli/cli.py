@@ -66,8 +66,15 @@ def init(force: bool) -> None:
     "--keep-generated", is_flag=True,
     help="Don't delete the generated _shotgun_generated.dart after the run.",
 )
+@click.option(
+    "--verbose", "-v", is_flag=True,
+    help="Show every line of flutter test output, including benign warnings "
+         "(macOS 'Failed to foreground app', package deprecations, etc.) "
+         "that shotgun would otherwise hide.",
+)
 def capture(
-    config_path: Path | None, device: str, flutter_bin: str, keep_generated: bool,
+    config_path: Path | None, device: str, flutter_bin: str,
+    keep_generated: bool, verbose: bool,
 ) -> None:
     """Render raw screenshots from your app via `flutter test`."""
     cfg_path, project_root = _resolve_config(config_path)
@@ -83,6 +90,7 @@ def capture(
             config, project_root,
             device=device, flutter_bin=flutter_bin,
             keep_generated=keep_generated,
+            verbose=verbose,
         )
     except CaptureError as e:
         raise click.ClickException(str(e)) from None

@@ -21,6 +21,10 @@ That's it. Everything else defaults. Running `shotgun capture && shotgun compose
 app:
   entry: lib/main.dart            # default; can be lib/main_shotgun.dart
   root_widget: MyApp              # name of the root widget class to pump
+  # Override when `root_widget` is declared in a different file than `entry`
+  # (e.g. main.dart only does `export 'app.dart' show MyApp;`). Dart's
+  # re-exports are not resolved by codegen, so point it at the real file.
+  root_widget_import: "package:my_app/app.dart"
   flavor: null                    # optional flutter --flavor
   dart_defines:                   # optional --dart-define key=value pairs
     SHOTGUN_MODE: "true"
@@ -30,6 +34,13 @@ app:
   # ShotgunRouterHandler for go_router / auto_route.
   setup_file: integration_test/_shotgun_setup.dart
   setup_fn: shotgunSetup
+  # Optional async bootstrap hook. Called inside each shot's testWidgets
+  # body, *before* the root widget is pumped. Use to mirror initialization
+  # your real `main()` performs before `runApp` — dotenv.load(),
+  # MobileAds.initialize(), Firebase.initializeApp(), etc. Without this hook
+  # shotgun renders the widget directly and those globals stay uninitialized,
+  # which usually crashes the first frame. Lives in the same `setup_file`.
+  bootstrap_fn: shotgunBootstrap
 
 # ───────────────────────────────────────────────────────
 # devices: which sizes to emit

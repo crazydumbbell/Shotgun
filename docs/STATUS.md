@@ -163,6 +163,12 @@ await ShotgunCapture.capture(
 - ✅ **status bar normalization**: `advanced.status_bar.normalize: true` 활성화 시 iOS shot에만 9:41 + 100% 배터리 stamp. raw screenshot → phone framing 사이에 적용. style=auto는 상단 픽셀 밝기로 텍스트 색 자동 결정.
 - ✅ **CI 워크플로**: `.github/workflows/ci.yml`. (1) Ubuntu에서 `shotgun_cli` pytest 18건, (2) 두 example의 `flutter analyze`, (3) macOS-14에서 notes_app full capture+compose smoke + 12개 PNG 검증 + artifact 업로드.
 
+### 실사용자 피드백 (2026-05-13) — 모두 완료
+- ✅ **root_widget이 export로 재노출된 경우 빌드 실패**: codegen이 `app.entry` 파일에 `class <root_widget>` 선언이 있는지 미리 검사. 없으면 Dart 컴파일러 에러("Couldn't find constructor 'MyApp'") 대신 `app.root_widget_import: 'package:<pkg>/app.dart'`로 명시하라는 메시지를 ValueError로 던짐. 사용자가 직접 import 경로를 지정하면 그대로 신뢰.
+- ✅ **main() 부트스트랩 누락**: `app.bootstrap_fn` (setup_file의 async 함수명) 옵션 추가. 각 `testWidgets` 본문에서 `pumpWidget` 전에 `await _shotgun_setup.<fn>()` 호출. 사용자는 `dotenv.load()` / `MobileAds.initialize()` / `Firebase.initializeApp()`를 거기 모아두면 됨. `bootstrap_fn`만 설정하고 `setup_file`이 비면 Pydantic 단계에서 거부.
+- ✅ **캡처 로그 노이즈**: macOS의 `Failed to foreground app`, pdfx류 `scanHexInt32 deprecated` 등 알려진 무해 경고를 `_BENIGN_LINE_SUBSTRINGS`로 분류하고 기본 숨김. `shotgun capture -v / --verbose`로 켤 수 있음. 실제 에러(`EXCEPTION CAUGHT`, `Couldn't find` 등)는 절대 숨기지 않음.
+- ✅ **실패 시 1줄 요약**: capture가 subprocess 출력을 스트리밍하면서 `+N -1 : ios/6.7/en/home [E]` 같은 라인을 잡아 어떤 shot에서 죽었는지 추적하고, 그 뒤 ~수십줄에서 raw stack frame을 제외한 첫 framework 에러 라인을 picks. 종료 시 stderr에 `[shotgun] failed at ios/6.7/en/home — NotInitializedError ...` 한 줄 + 기존 raw stack도 그대로 남김.
+
 ### 큰 것 (Phase 2)
 - pub.dev / PyPI 첫 배포
 - README에 실제 GIF 데모

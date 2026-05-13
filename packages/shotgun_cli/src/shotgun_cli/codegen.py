@@ -8,6 +8,7 @@ be regenerated on every `shotgun capture` run.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from jinja2 import Environment, StrictUndefined
@@ -22,7 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:shotgun_runner/shotgun_runner.dart';
-import 'package:{{ package }}/{{ entry_basename }}';
+import '{{ root_widget_import }}';
 {%- if setup_import %}
 import '{{ setup_import }}' as _shotgun_setup;
 {%- endif %}
@@ -79,6 +80,9 @@ void main() {
           width: shot.width,
           height: shot.height,
         );
+{%- if bootstrap_fn %}
+        await _shotgun_setup.{{ bootstrap_fn }}();
+{%- endif %}
         ShotgunCapture.setLocale(tester, shot.locale);
         await ShotgunCapture.resizeFor(tester, device);
         await tester.pumpWidget(
@@ -109,6 +113,66 @@ def _flutter_package_name(project_root: Path) -> str:
         if stripped.startswith("name:"):
             return stripped.split(":", 1)[1].strip().strip('"').strip("'")
     raise ValueError(f"{pubspec}: no `name:` field found")
+
+
+def _entry_declares(entry_path: Path, symbol: str) -> bool:
+    """Best-effort check: does `entry_path` declare a top-level class/widget
+    named `symbol`? Used only to produce a clearer error message — the real
+    arbitrator is the Dart compiler.
+
+    Specifically detects `class <symbol>` (with optional modifiers like
+    `abstract`/`sealed`). Re-exports (`export 'app.dart' show MyApp;`) do
+    NOT count: the generated test imports `entry_path` directly, and Dart's
+    re-export visibility doesn't make re-exported symbols available to
+    importers of the re-exporting file the way the user expects.
+    """
+    try:
+        text = entry_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    pattern = rf"^\s*(?:abstract\s+|sealed\s+|base\s+|final\s+|interface\s+|mixin\s+)*class\s+{re.escape(symbol)}\b"
+    return re.search(pattern, text, flags=re.MULTILINE) is not None
+
+
+def _resolve_root_widget_import(
+    config: ShotgunConfig, project_root: Path, package: str,
+) -> str:
+    """Figure out the Dart import path for the file declaring `root_widget`.
+
+    Priority:
+    1. `app.root_widget_import` explicitly set → trust the user.
+    2. Otherwise derive from `app.entry`. If `entry` does NOT declare the
+       widget (e.g. it's re-exported from another file), raise with a
+       message that points the user at `root_widget_import`.
+    """
+    if config.app.root_widget_import:
+        return config.app.root_widget_import
+
+    entry_rel = config.app.entry
+    entry_path = (project_root / entry_rel).resolve()
+    # Map `lib/foo/bar.dart` → `package:<pkg>/foo/bar.dart`. Files outside
+    # `lib/` cannot be imported via `package:` and must be addressed via
+    # `root_widget_import`.
+    lib_dir = (project_root / "lib").resolve()
+    try:
+        rel = entry_path.relative_to(lib_dir)
+    except ValueError as exc:
+        raise ValueError(
+            f"app.entry {entry_rel!r} is not under lib/. Set "
+            f"app.root_widget_import to a Dart import path "
+            f"(e.g. 'package:{package}/main.dart')."
+        ) from exc
+
+    if entry_path.exists() and not _entry_declares(entry_path, config.app.root_widget):
+        raise ValueError(
+            f"app.root_widget {config.app.root_widget!r} is not declared in "
+            f"{entry_rel} (re-exports like `export '...' show {config.app.root_widget};` "
+            f"are not resolved by codegen). Set app.root_widget_import to "
+            f"the file that actually declares the class, e.g. "
+            f"app.root_widget_import: 'package:{package}/app.dart'."
+        )
+
+    return f"package:{package}/{rel.as_posix()}"
 
 
 def _setup_import_path(config: ShotgunConfig, project_root: Path) -> str | None:
@@ -143,7 +207,7 @@ def _setup_import_path(config: ShotgunConfig, project_root: Path) -> str | None:
 def render_integration_test(config: ShotgunConfig, project_root: Path) -> str:
     """Return the Dart source code for `_shotgun_generated.dart`."""
     package = config.app.package or _flutter_package_name(project_root)
-    entry_basename = Path(config.app.entry).name  # e.g. main.dart
+    root_widget_import = _resolve_root_widget_import(config, project_root, package)
     env = Environment(
         autoescape=False,
         keep_trailing_newline=True,
@@ -154,11 +218,12 @@ def render_integration_test(config: ShotgunConfig, project_root: Path) -> str:
     tmpl = env.from_string(_TEMPLATE)
     return tmpl.render(
         package=package,
-        entry_basename=entry_basename,
+        root_widget_import=root_widget_import,
         root_widget=config.app.root_widget,
         shots=config.iter_matrix(),
         setup_import=_setup_import_path(config, project_root),
         setup_fn=config.app.setup_fn,
+        bootstrap_fn=config.app.bootstrap_fn,
     )
 
 

@@ -18,6 +18,14 @@ class AppConfig(BaseModel):
 
     entry: str = "lib/main.dart"
     root_widget: str = "MyApp"
+    # Optional explicit import for `root_widget`. Codegen normally derives
+    # the import from `entry`, which only works when `root_widget` is
+    # *declared* in that file. Dart's `export ... show X` re-exports are not
+    # resolved, so apps that put their root widget in (say) `lib/app.dart`
+    # and `export 'app.dart' show MyApp;` from main.dart will fail to build.
+    # Set this to a Dart import path (`package:my_app/app.dart`) to point
+    # codegen at the real declaration.
+    root_widget_import: str | None = None
     package: str | None = None  # defaults to the Flutter app's package name
     flavor: str | None = None
     dart_defines: dict[str, str] = Field(default_factory=dict)
@@ -29,6 +37,39 @@ class AppConfig(BaseModel):
     # `ShotgunCapture.setRouterHandler`.
     setup_file: str | None = None
     setup_fn: str = "shotgunSetup"
+
+    # Optional bootstrap hook. When set, codegen calls `<bootstrap_fn>()` in
+    # the generated test's `main()` *before any shots run*, awaiting it if it
+    # returns a Future. Use this to mirror initialization your app's real
+    # `main()` performs before `runApp` — e.g. `dotenv.load()`,
+    # `MobileAds.initialize()`, `Firebase.initializeApp()`. Without this hook
+    # shotgun renders the root widget directly and those globals stay
+    # uninitialized, which usually crashes the first frame.
+    #
+    # The hook lives in `setup_file` (so existing router setup files can host
+    # both `shotgunSetup` and a bootstrap function).
+    bootstrap_fn: str | None = None
+
+    @field_validator("root_widget_import")
+    @classmethod
+    def _root_widget_import_shape(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not (v.startswith("package:") or v.endswith(".dart")):
+            raise ValueError(
+                "app.root_widget_import must be a Dart import string like "
+                "'package:my_app/app.dart' (or a path ending in .dart)"
+            )
+        return v
+
+    @model_validator(mode="after")
+    def _bootstrap_requires_setup_file(self) -> AppConfig:
+        if self.bootstrap_fn and not self.setup_file:
+            raise ValueError(
+                "app.bootstrap_fn requires app.setup_file (the bootstrap "
+                "function must live in a Dart file that codegen can import)"
+            )
+        return self
 
 
 class DeviceSpec(BaseModel):
