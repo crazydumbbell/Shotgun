@@ -219,11 +219,45 @@ def _preset_studio() -> Preset:
     )
 
 
+def _preset_dark_studio() -> Preset:
+    """Studio layout with a dark, premium-tone backdrop and light caption.
+
+    Mirrors `studio` (phone on top, caption below) but flips the palette
+    for marketing collages that want a moody, app-store-hero feel. Tuned
+    so the drop shadow still reads against the dark canvas.
+    """
+    return Preset(
+        name="dark_studio",
+        gradient=None,
+        highlight=None,
+        background=(18, 20, 28),
+        caption=CaptionConfig(
+            color=(235, 237, 245),
+            stroke_color=(0, 0, 0),
+            stroke_opacity=0,
+            stroke_divisor=999,
+            top_ratio=0.80,
+            max_height_ratio=0.08,
+            side_padding_ratio=0.10,
+            line_spacing=8,
+        ),
+        phone=PhoneConfig(
+            scale=0.62,
+            bottom_margin_ratio=0.16,
+            caption_to_phone_gap_ratio=0.03,
+            shadow_blur=180,
+            shadow_opacity=110,
+            shadow_offset_y=80,
+        ),
+    )
+
+
 _PRESETS: dict[str, "callable[[], Preset]"] = {  # type: ignore[type-arg]
     "vivid_gradient": _preset_vivid_gradient,
     "minimal": _preset_minimal,
     "feature_callout": _preset_feature_callout,
     "studio": _preset_studio,
+    "dark_studio": _preset_dark_studio,
 }
 
 

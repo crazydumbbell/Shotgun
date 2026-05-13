@@ -4,7 +4,7 @@ synthetic log lines."""
 
 from __future__ import annotations
 
-from shotgun_cli.capture import (
+from shotgun_cli.backends.macos_host import (
     _BENIGN_LINE_SUBSTRINGS,
     _FailureContext,
     _format_failure_summary,

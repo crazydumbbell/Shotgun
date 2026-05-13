@@ -1,0 +1,45 @@
+# shotgun.yaml — 계약서 분석 앱 마케팅 PNG (iOS Simulator backend).
+
+app:
+  entry: lib/main.dart
+  root_widget: ContractAnalyzerApp
+  setup_file: integration_test/_shotgun_setup.dart
+
+devices:
+  ios:
+    - name: "6.7"
+      size: [1290, 2796]
+      sim_device: "iPhone 17 Pro Max"
+
+locales: [ko]
+
+theme:
+  preset: dark_studio
+
+advanced:
+  backend: ios_sim
+  scheme: shotgun
+  settle_ms: 1500
+  status_bar:
+    normalize: false   # ios_sim uses real simulator status_bar override
+
+scenes:
+  - id: list
+    route: /
+    caption:
+      ko: "어떤 계약서든\n위험을 한눈에"
+
+  - id: detail
+    route: /contract/1
+    settle_ms: 1800
+    caption:
+      ko: "조항별로 꼼꼼하게\n분석해드려요"
+
+  - id: search
+    route: /search
+    settle_ms: 1500
+    pre_capture:
+      - { action: keyboard_show }
+      - { action: wait, ms: 300 }
+    caption:
+      ko: "한 글자만 쳐도\n바로 찾아드려요"

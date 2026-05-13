@@ -77,6 +77,16 @@ class DeviceSpec(BaseModel):
 
     name: str
     size: tuple[int, int]
+    # Used only by the `ios_sim` backend — which simulator device profile
+    # to boot (`xcrun simctl list devicetypes` shows valid values).
+    # Defaulted in the backend so users on `macos_host` can ignore it.
+    sim_device: str | None = None
+    # Optional iOS runtime pin. `latest` (default) lets the backend pick
+    # the newest installed runtime. Or specify e.g.
+    # `com.apple.CoreSimulator.SimRuntime.iOS-26-4`.
+    sim_runtime: str | None = None
+    # Used only by the `android_emu` backend (Phase 2 stretch).
+    emu_avd: str | None = None
 
     @field_validator("size", mode="before")
     @classmethod
@@ -99,7 +109,7 @@ class DevicesConfig(BaseModel):
         return self
 
 
-_VALID_PRESETS = {"vivid_gradient", "minimal", "feature_callout", "studio"}
+_VALID_PRESETS = {"vivid_gradient", "minimal", "feature_callout", "studio", "dark_studio"}
 
 
 class ThemeConfig(BaseModel):
@@ -137,6 +147,33 @@ class SceneConfig(BaseModel):
     setup: list[dict[str, Any]] = Field(default_factory=list)
     mock: dict[str, Any] = Field(default_factory=dict)
     only: SceneOnly | None = None
+    # Used only by the `ios_sim` backend. Wait this long (ms) between
+    # `openurl` and screenshot. Falls back to `advanced.settle_ms`. Bump
+    # this for scenes with animations or async data loads.
+    settle_ms: int | None = None
+    # Used only by the `ios_sim` backend. List of actions the backend
+    # runs *after* settling but *before* the screenshot. Each item is a
+    # mapping like `{ action: keyboard_show }` or `{ action: wait, ms: 400 }`.
+    # See PHASE2.md for the action vocabulary. Unknown actions are
+    # rejected at config-load time.
+    pre_capture: list[dict[str, Any]] = Field(default_factory=list)
+
+    @field_validator("pre_capture")
+    @classmethod
+    def _pre_capture_known(cls, v: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        valid_actions = {"keyboard_show", "wait"}
+        for i, item in enumerate(v):
+            action = item.get("action")
+            if action not in valid_actions:
+                raise ValueError(
+                    f"scenes[*].pre_capture[{i}].action {action!r} unknown. "
+                    f"Valid: {', '.join(sorted(valid_actions))}"
+                )
+            if action == "wait" and not isinstance(item.get("ms"), int):
+                raise ValueError(
+                    f"scenes[*].pre_capture[{i}] wait action needs integer 'ms'"
+                )
+        return v
 
     @field_validator("id")
     @classmethod
@@ -169,11 +206,44 @@ class StatusBarConfig(BaseModel):
     style: str = "auto"     # "auto" | "light" | "dark"
 
 
+_VALID_BACKENDS = {"macos_host", "ios_sim"}
+
+
 class AdvancedConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     pixel_ratio: float = 1.0
     status_bar: StatusBarConfig = Field(default_factory=StatusBarConfig)
+    # Which capture backend orchestrates the run. `macos_host` is the
+    # Phase 1 backend: `flutter test -d macos` with `setSurfaceSize`.
+    # `ios_sim` drives a real iOS Simulator via `xcrun simctl` for shots
+    # that include real system chrome (status bar, keyboard, share sheet).
+    # See docs/PHASE2.md.
+    backend: str = "macos_host"
+    # URL scheme used by `ios_sim` (and `android_emu`) to navigate via
+    # `simctl openurl <scheme>://<route>`. The user's app must declare
+    # this scheme in Info.plist and route deeplinks to their app routes.
+    scheme: str = "shotgun"
+    # Default wait (ms) after `openurl` before the screenshot is taken.
+    # Override per scene via `scenes[].settle_ms`. Phase 1 backend ignores.
+    settle_ms: int = 1200
+    # Hard ceiling on simulator boot time. Long first boots after Xcode
+    # updates can exceed 60s; raise this if your CI hits the wall.
+    boot_timeout_s: int = 90
+    # Optional override for `flutter run` shell command. Leave None to use
+    # the default `flutter run -d <udid> --release`. Set this when the
+    # app has a custom entrypoint (e.g. `--target=lib/main_dev.dart`).
+    boot_command: str | None = None
+
+    @field_validator("backend")
+    @classmethod
+    def _backend_known(cls, v: str) -> str:
+        if v not in _VALID_BACKENDS:
+            raise ValueError(
+                f"advanced.backend {v!r} unknown. "
+                f"Valid: {', '.join(sorted(_VALID_BACKENDS))}"
+            )
+        return v
 
 
 _DEFAULT_DEVICES = DevicesConfig(

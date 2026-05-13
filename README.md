@@ -187,13 +187,41 @@ export SHOTGUN_FONT_KO=/path/to/Pretendard-Bold.otf
 
 ---
 
+## 진짜 시뮬레이터에서 찍고 싶다 (ios_sim 백엔드)
+
+기본 백엔드(macos_host)는 Flutter 위젯 트리만 캡처해서 빠르지만 — 시스템 키보드, 진짜 status bar, share sheet는 못 찍는다. 그게 필요하면 ios_sim 백엔드:
+
+```yaml
+# shotgun.yaml
+advanced:
+  backend: ios_sim
+  scheme: shotgun            # ios/Runner/Info.plist에 등록할 URL scheme
+
+scenes:
+  - id: search
+    route: /search
+    pre_capture:             # 캡처 직전에 실행할 액션
+      - { action: keyboard_show }
+      - { action: wait, ms: 300 }
+```
+
+결과: `xcrun simctl io` 실제 시뮬 framebuffer 캡처. 9:41 status bar, Dynamic Island, 시스템 키보드 다 들어옴. 한 컷에 ~5–8초 (Phase 1 macos_host의 ~8초와 비슷, 부팅 한 번에 ~45초 추가).
+
+레퍼런스 앱: [examples/contract_analyzer](examples/contract_analyzer) — `shotgun capture && shotgun compose-grid` 한 번이면 3-phone 콜라주 PNG가 떨어진다.
+
+> AppleScript로 시뮬 메뉴를 클릭하는 데 macOS Accessibility 권한이 필요. System Settings → Privacy & Security → Accessibility에서 터미널 허용.
+
+---
+
 ## 더 알아보기
 
 - [docs/CONFIG_SCHEMA.md](docs/CONFIG_SCHEMA.md) — `shotgun.yaml` 전체 옵션 (status bar normalize, scene 필터링, preset 커스터마이즈 등)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 동작 원리 (codegen → entitlements 패치 → flutter test → Pillow 합성)
-- [docs/ROADMAP.md](docs/ROADMAP.md) — 앞으로 들어올 것 (go_router 지원, pub.dev 배포, GIF 데모)
+- [docs/PHASE2.md](docs/PHASE2.md) — ios_sim 백엔드 설계와 `pre_capture` DSL 레퍼런스
+- [docs/ROADMAP.md](docs/ROADMAP.md) — 앞으로 들어올 것 (Android emulator, pub.dev 배포, GIF 데모)
 - [docs/STATUS.md](docs/STATUS.md) — 현재 어디까지 됐는지
-- [examples/notes_app](examples/notes_app) — 다국어 3-route 앱 레퍼런스 구현
+- [examples/notes_app](examples/notes_app) — macos_host 백엔드 레퍼런스 (다국어 3-route)
+- [examples/contract_analyzer](examples/contract_analyzer) — ios_sim 백엔드 레퍼런스 (한글 키보드 포함)
 
 ---
 

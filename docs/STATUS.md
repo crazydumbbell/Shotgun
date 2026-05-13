@@ -1,12 +1,63 @@
 # shotgun — 현재 상태 (handoff)
 
-작성: 2026-05-13 (updated). 새 채팅에서 이 파일만 읽어도 어디까지 했고 다음에 뭘 할지 파악 가능하도록.
+작성: 2026-05-14 (PR-C.1 완료). 새 채팅에서 이 파일만 읽어도 어디까지 했고 다음에 뭘 할지 파악 가능하도록.
 
 ---
 
 ## 한 줄 요약
 
-Phase 1 + 1.5 + 실사용자 피드백 4건 + 목업 품질 업그레이드 4건 모두 완료. `shotgun init / capture / compose / compose-grid` 풀 파이프라인이 `shotgun.yaml` 한 장으로 돌아가고, 사실적 device frame (CC0 PommePlate) · 4종 compose preset (`vivid_gradient` / `minimal` / `feature_callout` / `studio`) · multi-phone 콜라주 · declarative router hook · iOS status bar normalize까지 들어옴. notes_app 매트릭스 12/12 회귀 없음 + Python 단위테스트 32/32. 다음은 Phase 2 (pub.dev/PyPI 배포, GIF 데모, golden-image visual regression, Android frame).
+Phase 1 + 1.5 + 실사용자 피드백 4건 + 목업 품질 업그레이드 4건 + **Phase 2 PR-A/B (실제 iOS Simulator backend MVP)** + **PR-C.1 완료 (`pre_capture` DSL — keyboard_show / wait, 시스템 한글 키보드 캡처 검증)** 까지. `shotgun init / capture / compose / compose-grid` 풀 파이프라인이 `shotgun.yaml` 한 장으로 돌아가고, 사실적 device frame (CC0 PommePlate) · 5종 compose preset (`vivid_gradient` / `minimal` / `feature_callout` / `studio` / `dark_studio`) · multi-phone 콜라주 · declarative router hook · iOS status bar normalize · `macos_host` ↔ `ios_sim` 백엔드 분리. notes_app 매트릭스 12/12 회귀 없음 + Python 단위테스트 32/32 + contract_analyzer가 진짜 iOS 26.4 시뮬레이터(iPhone 17 Pro Max)에서 9:41/Dynamic Island/시스템 한글 키보드(✓ 보내기 + 마이크) 포함 list/detail/search 3컷 캡처 성공.
+
+---
+
+## 다음 채팅에서 이어갈 때 (HANDOFF — 2026-05-14)
+
+### 직전 작업: PR-C.1 — `pre_capture` DSL ✅ 완료
+
+**한 줄**: `keyboard_show` + `wait` 액션을 yaml에 추가하고, AppleScript로 Simulator의 `I/O → Keyboard → Toggle Software Keyboard` 메뉴를 클릭해서 software 키보드가 실제로 화면에 뜨도록 함. 3컷 캡처 + 콜라주 + pytest 32/32 모두 통과.
+
+**완료된 것:**
+- `SceneConfig.pre_capture: list[dict]` 추가 + validator (`config.py:135-176`). 액션 `keyboard_show` / `wait` 화이트리스트, 알 수 없는 액션은 load time에 거부.
+- `IosSimBackend._dispatch_action()` (`backends/ios_sim.py`). `wait`는 `ms` 만큼 sleep, `keyboard_show`는 software keyboard 토글 + 0.6s dwell.
+- **핵심 발견**: `defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false`는 **이미 실행 중인 Simulator GUI 세션에서는 무효**. 부팅 전에 호출해도 동일 — Simulator GUI는 앱 launch 시점에만 이 pref를 읽는다. 대신 `osascript`로 `I/O → Keyboard → Toggle Software Keyboard` 메뉴(Cmd-K)를 클릭하는 게 신뢰할 수 있는 유일한 방법. `_toggle_software_keyboard()` 헬퍼로 구현 — osascript/Accessibility 권한 없으면 swallow.
+- contract_analyzer에 `ContractSearchPage` 추가 — autofocus TextField + 최근 검색어 + 추천 키워드 chips.
+- `_DeeplinkRouter._handleUri` 수정: `popUntil(isFirst)` + `addPostFrameCallback`으로 push 지연 → search route 정상 진입.
+- shotgun.yaml에 search scene + `pre_capture: [keyboard_show, wait 300ms]` 추가.
+
+**검증 결과 (2026-05-14):**
+- `shotgun_output/ios/6.7/ko/03_search.png` 220KB — 화면 하단에 시스템 한글 두벌식 키보드 + ✓ 보내기 버튼 + 마이크 + 지구본 + 이모지 모두 보임.
+- `shotgun_output/ios/6.7/ko/{01_list,02_detail}.png` 회귀 없음 (각 280KB, 301KB).
+- `shotgun_output_composed/_grid.png` — 3-phone 콜라주에 ±5° 회전 + dark_studio preset + 한글 캡션.
+- `pytest packages/shotgun_cli` 32/32 green.
+
+**남은 작업 (다음 채팅 우선순위):**
+1. **PR-C.1 commit**: 사용자가 git commit 지시하면 단일 커밋으로. 변경 파일:
+   - `packages/shotgun_cli/src/shotgun_cli/config.py` (pre_capture validator)
+   - `packages/shotgun_cli/src/shotgun_cli/backends/ios_sim.py` (`_dispatch_action`, `_toggle_software_keyboard`, hw keyboard toggle)
+   - `examples/contract_analyzer/lib/main.dart` (`_DeeplinkRouter`, `ContractSearchPage`)
+   - `examples/contract_analyzer/shotgun.yaml` (search scene)
+   - `docs/STATUS.md`, `docs/PHASE2.md`
+2. **PR-C.2 시작**: multi-locale. System-level `AppleLanguages` 스위칭 vs deeplink query param(`?locale=ko`) 둘 다 지원할지 결정. 사용자 앱 변경 최소화 관점에선 system-level이 깔끔.
+3. **PR-C.3**: `share_sheet`, `notification` 액션. `share_sheet`는 share 버튼 selector를 yaml에 받아서 AppleScript click. `notification`은 `simctl push` 1회.
+4. **PR-D**: Android emulator 백엔드 (adb + emulator -avd + screencap). 사실상 iOS-sim의 mirror 구조.
+
+### Phase 2 전체 진행도
+
+- ✅ **PR-A**: 백엔드 ABC 추출 (`backends/{base,macos_host}.py` + `capture.py` dispatcher) — 동작 변화 0
+- ✅ **PR-B**: iOS sim 백엔드 MVP — boot/status_bar/deeplink/screenshot/teardown
+- ✅ **PR-C.1**: `pre_capture` DSL (`keyboard_show` + `wait`) — 검증 완료
+- ⬜ **PR-C.2**: multi-locale (system-level `AppleLanguages` 또는 deeplink query param)
+- ⬜ **PR-C.3**: 추가 액션 (`share_sheet`, `notification`)
+- ⬜ **PR-D**: Android emulator 백엔드 (adb + emulator -avd + screencap)
+
+### 알려진 trickiness (PR-C 이어갈 때 주의)
+
+1. **iOS "Open in App?" confirm dialog**: 백엔드가 첫 prime openurl + AppleScript Return으로 dismiss. 두 번째부터 OS가 다이얼로그 생략. AppleScript는 Accessibility 권한 필요 — CI에서 안 됨 (PR-D 작업하면서 같이 해결할 일).
+2. **`pushNamed`가 deeplink listener에서 즉시 호출되면 NavigatorState rebuild와 race**. `addPostFrameCallback`으로 한 프레임 미루는 게 필수 (`main.dart:_handleUri`).
+3. **iOS 시뮬레이터는 `--release` / `--profile` 미지원** (no JIT-less runtime). 백엔드는 `flutter run` (debug) 사용. 빌드는 첫 번째만 ~30s, 이후 즉시.
+4. **software keyboard 강제 표시는 AppleScript 메뉴 클릭만 신뢰 가능**. `defaults write ConnectHardwareKeyboard false`는 Simulator GUI에서 무시됨. `_toggle_software_keyboard()`는 토글이라 idempotent하지 않음 — 두 번째 `keyboard_show`가 같은 세션에서 호출되면 키보드를 *내릴* 수 있다. 한 매트릭스에 search scene을 두 개 두면 두 번째가 키보드 없이 캡처될 가능성. PR-C.2/.3에서 명시적 `keyboard_hide` 액션 추가하거나 메뉴 항목의 mark/checked 상태 검사로 idempotent하게 만드는 것 검토.
+5. **AppleScript는 Accessibility 권한 필요**. macOS Privacy & Security → Accessibility → Terminal/iTerm/Claude Code 허용. CI에선 불가 → `_toggle_software_keyboard()`는 best-effort, 실패하면 키보드 없이 캡처되지만 다른 신은 정상.
+6. **dPR 자동 스케일** (`examples/contract_analyzer/lib/main.dart`의 `_s` getter): 시뮬레이터 dPR > 1.5면 1.0, macOS host dPR=1.0이면 2.2. 새 예제 만들 때 같은 패턴 따를 것.
 
 ---
 
@@ -231,6 +282,7 @@ grep -A1 "app-sandbox" macos/Runner/DebugProfile.entitlements
 
 ## 새 채팅에서 시작할 때
 
-1. 이 파일 + `docs/SPIKES.md` + `docs/ROADMAP.md` 읽기
-2. 사용자가 새 방향 던지지 않으면, "큰 것 (Phase 2)"의 첫 항목 제안 — 우선순위 추천: (a) golden-image visual regression (현재 unit test는 shape만 검증, 진짜 시각 회귀는 못 잡음), (b) pub.dev / PyPI 첫 배포 준비, (c) declarative router 통합 example
-3. 회귀 빠른 확인: `pytest packages/shotgun_cli` + `cd examples/notes_app && shotgun capture && shotgun compose`
+1. 이 파일 + `docs/PHASE2.md` 읽기 (선택: `docs/SPIKES.md`, `docs/ROADMAP.md`)
+2. 사용자가 새 방향 던지지 않으면, **PR-C.2 (multi-locale)** 부터 제안. 그 다음 PR-C.3 → PR-D → pub.dev/PyPI 배포.
+3. 회귀 빠른 확인 (Phase 1 macos_host): `pytest packages/shotgun_cli` + `cd examples/notes_app && shotgun capture && shotgun compose`
+4. 회귀 빠른 확인 (Phase 2 ios_sim): `cd examples/contract_analyzer && xcrun simctl shutdown all && rm -rf shotgun_output* && shotgun capture && shotgun compose && shotgun compose-grid` — `shotgun_output/ios/6.7/ko/03_search.png`에 시스템 키보드 있는지 확인

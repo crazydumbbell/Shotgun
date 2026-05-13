@@ -146,7 +146,7 @@ def compose_cmd(
         except KeyError:
             raise click.UsageError(
                 f"unknown theme.preset {config.theme.preset!r}. "
-                "Valid: vivid_gradient, minimal, feature_callout, studio."
+                "Valid: vivid_gradient, minimal, feature_callout, studio, dark_studio."
             ) from None
 
         entries = config.iter_matrix()
@@ -199,7 +199,7 @@ def compose_cmd(
     except KeyError:
         raise click.UsageError(
             f"unknown preset {preset_name!r}. "
-            "Valid: vivid_gradient, minimal, feature_callout, studio."
+            "Valid: vivid_gradient, minimal, feature_callout, studio, dark_studio."
         ) from None
     result = compose_image(screenshot, output, caption_text, preset)
     click.echo(f"wrote {result}")
@@ -225,9 +225,15 @@ def compose_cmd(
     help="Which locale's composed images to use. Defaults to the first "
          "locale in shotgun.yaml.",
 )
+@click.option(
+    "--background", "background", default=None,
+    help="Canvas background as 'R,G,B' (each 0-255). Defaults to the "
+         "off-white studio tone. Match this to your compose preset — "
+         "e.g. '18,20,28' for dark_studio.",
+)
 def compose_grid_cmd(
     config_path: Path | None, cols: int, output_path: Path | None,
-    locale: str | None,
+    locale: str | None, background: str | None,
 ) -> None:
     """Tile composed images into a single multi-phone collage."""
     cfg_path, project_root = _resolve_config(config_path)
@@ -256,8 +262,20 @@ def compose_grid_cmd(
             f"no composed PNGs found for locale {chosen_locale!r}."
         )
 
+    grid_kwargs: dict = {"cols": cols}
+    if background is not None:
+        try:
+            parts = [int(p.strip()) for p in background.split(",")]
+            if len(parts) != 3 or not all(0 <= p <= 255 for p in parts):
+                raise ValueError
+        except ValueError:
+            raise click.UsageError(
+                f"--background must be 'R,G,B' with values 0-255, got {background!r}."
+            ) from None
+        grid_kwargs["background"] = (parts[0], parts[1], parts[2])
+
     out = output_path or (composed_root / "_grid.png")
-    compose_grid(paths, out, cols=cols)
+    compose_grid(paths, out, **grid_kwargs)
     click.echo(f"wrote {out} ({len(paths)} phones, {cols} cols)")
 
 
