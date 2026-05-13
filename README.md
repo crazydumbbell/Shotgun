@@ -45,7 +45,7 @@ Phase 1 + 1.5 complete. Full `init → capture → compose` pipeline runs from a
 
 See [docs/STATUS.md](docs/STATUS.md) for the current handoff state and [docs/ROADMAP.md](docs/ROADMAP.md) for what's next.
 
-**Not yet on pub.dev / PyPI** — install from this repo (instructions below). First public release is targeted for Phase 2.
+**Not yet on pub.dev / PyPI** — install via Git dependency (see [Install](#install)). First registry release is targeted for Phase 2. Until then, `pip install git+...` and the `git:` directive in `pubspec.yaml` work the same way without the clone-and-symlink dance.
 
 ---
 
@@ -93,28 +93,33 @@ That's hundreds of images. Today, the options are:
 
 ## Install
 
-shotgun is two packages — a Dart helper your app depends on, and a Python CLI that drives capture/compose.
+shotgun is two packages — a Python CLI (`shotgun_cli`) that drives capture/compose, and a Dart helper (`shotgun_runner`) your app depends on. **You don't need to clone this repo to use it** — both packages install directly from GitHub.
+
+### 1. Install the Python CLI
 
 ```bash
-# 1. Clone this repo
-git clone https://github.com/crazydumbbell/Shotgun.git shotgun
-cd shotgun
+# Recommended: install into a venv so it doesn't pollute your global Python
+python3 -m venv ~/.shotgun-venv
+source ~/.shotgun-venv/bin/activate
 
-# 2. Install the Python CLI into a virtualenv (editable, so updates are instant)
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e packages/shotgun_cli
+pip install "git+https://github.com/crazydumbbell/Shotgun.git#subdirectory=packages/shotgun_cli"
 
-# 3. Verify the CLI works
-shotgun --help
+shotgun --help    # verify
 ```
 
-Then, in **your Flutter app's** `pubspec.yaml`:
+> Want it on your PATH permanently? Either keep that venv active in your shell rc, or use [`pipx`](https://pipx.pypa.io/): `pipx install "git+https://github.com/crazydumbbell/Shotgun.git#subdirectory=packages/shotgun_cli"`.
+
+### 2. Add the Dart runner to your Flutter app
+
+In **your** Flutter app's `pubspec.yaml`:
 
 ```yaml
 dev_dependencies:
   shotgun_runner:
-    path: /absolute/path/to/cloned/shotgun/packages/shotgun_runner
+    git:
+      url: https://github.com/crazydumbbell/Shotgun.git
+      path: packages/shotgun_runner
+      ref: main                  # or a specific tag once we publish releases
   integration_test:
     sdk: flutter
 ```
@@ -123,17 +128,30 @@ dev_dependencies:
 flutter pub get
 ```
 
-> Tip: keep the `.venv` active while you use shotgun — or invoke it via absolute path: `/path/to/shotgun/.venv/bin/shotgun capture`.
+That's it — no clone, no absolute paths, no copy/paste. Your teammates and CI will resolve the dependency the same way.
+
+> **Pin to a specific version** once you ship: replace `ref: main` with a commit SHA (`ref: 86d3fae`) or git tag (`ref: v0.1.0`). Recommended for production projects so a shotgun update doesn't surprise you.
+
+### Updating later
+
+```bash
+# Python CLI
+pip install --upgrade --force-reinstall \
+  "git+https://github.com/crazydumbbell/Shotgun.git#subdirectory=packages/shotgun_cli"
+
+# Dart runner — in your Flutter app
+flutter pub upgrade shotgun_runner
+```
 
 ---
 
 ## 5분 안에 첫 스크린샷 만들기 / 5-minute quick start
 
-The fastest way to see results is to run the bundled `examples/notes_app`:
+The fastest way to see results is to run the bundled `examples/notes_app`. **For this you do need a local checkout** (the examples are inside the repo):
 
 ```bash
-# In the cloned shotgun repo
-cd examples/notes_app
+git clone https://github.com/crazydumbbell/Shotgun.git
+cd Shotgun/examples/notes_app
 flutter pub get
 shotgun capture && shotgun compose
 open shotgun_output_composed/
@@ -142,6 +160,8 @@ open shotgun_output_composed/
 You'll get **12 composed PNGs** (2 devices × 2 locales × 3 scenes). First cold build ≈ 2 minutes; incremental ≈ 8 seconds per shot.
 
 ### Then point it at your own app
+
+In your own Flutter project (no clone needed — you already added `shotgun_runner` via git in [Install](#install)):
 
 ```bash
 cd /path/to/your_flutter_app

@@ -36,8 +36,8 @@ dev = [
 shotgun = "shotgun_cli.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/exchip/shotgun"
-Repository = "https://github.com/exchip/shotgun"
+Homepage = "https://github.com/crazydumbbell/Shotgun"
+Repository = "https://github.com/crazydumbbell/Shotgun"
 
 [tool.setuptools.packages.find]
 where = ["src"]
