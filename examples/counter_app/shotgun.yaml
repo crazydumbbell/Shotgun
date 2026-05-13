@@ -1,0 +1,25 @@
+# shotgun.yaml — App Store / Play Store screenshot config.
+
+app:
+  entry: lib/main.dart
+  root_widget: MyApp
+
+devices:
+  ios:
+    - { name: "6.7", size: [1290, 2796] }
+    - { name: "6.5", size: [1242, 2688] }
+    - { name: "5.5", size: [1242, 2208] }
+  android:
+    - { name: "phone", size: [1080, 1920] }
+
+locales: [en, ko]
+
+theme:
+  preset: vivid_gradient
+
+scenes:
+  - id: home
+    route: /
+    caption:
+      en: "Make your day\nlighter"
+      ko: "당신의 하루를\n더 가볍게"

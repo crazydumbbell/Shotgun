@@ -1,0 +1,17 @@
+name: shotgun_runner
+description: Drives shotgun's screenshot capture from inside a Flutter app's integration_test. Add as a dev_dependency.
+version: 0.0.1
+homepage: https://github.com/exchip/shotgun
+repository: https://github.com/exchip/shotgun
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter

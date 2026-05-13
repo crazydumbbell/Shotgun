@@ -1,0 +1,41 @@
+# shotgun.yaml — App Store / Play Store screenshot config.
+
+app:
+  entry: lib/main.dart
+  root_widget: MyApp
+  setup_file: integration_test/_shotgun_setup.dart
+
+devices:
+  ios:
+    - { name: "6.7", size: [1290, 2796] }
+  android:
+    - { name: "phone", size: [1080, 1920] }
+
+locales: [en, ko]
+
+theme:
+  preset: vivid_gradient
+
+advanced:
+  status_bar:
+    normalize: true
+    time: "9:41"
+
+scenes:
+  - id: home
+    route: /
+    caption:
+      en: "Every thought,\nin one place"
+      ko: "모든 생각을\n한곳에"
+
+  - id: detail
+    route: /note/1
+    caption:
+      en: "Capture the\nlittle details"
+      ko: "작은 디테일도\n놓치지 마세요"
+
+  - id: search
+    route: /search
+    caption:
+      en: "Find anything\nin a tap"
+      ko: "원하는 것을\n한 번에"

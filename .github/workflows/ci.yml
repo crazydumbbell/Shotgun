@@ -1,0 +1,130 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shotgun-cli:
+    name: shotgun_cli (python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Noto CJK
+        # Needed for the compose tests that render Korean / CJK captions;
+        # otherwise PIL falls back to its bitmap default and the
+        # rendered images are visually broken (tests still pass, but
+        # we want the lookup path exercised on every PR).
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+
+      - name: Install package + dev extras
+        run: pip install -e 'packages/shotgun_cli[dev]'
+
+      - name: Run pytest
+        run: pytest packages/shotgun_cli
+
+  flutter-examples:
+    name: flutter analyze (${{ matrix.example }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example: [counter_app, notes_app]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.41.x"
+          cache: true
+
+      - name: Pub get (shotgun_runner)
+        run: flutter pub get
+        working-directory: packages/shotgun_runner
+
+      - name: Analyze shotgun_runner
+        run: flutter analyze
+        working-directory: packages/shotgun_runner
+
+      - name: Pub get (${{ matrix.example }})
+        run: flutter pub get
+        working-directory: examples/${{ matrix.example }}
+
+      - name: Analyze ${{ matrix.example }}
+        run: flutter analyze
+        working-directory: examples/${{ matrix.example }}
+
+  capture-smoke:
+    name: capture + compose (macOS, notes_app)
+    runs-on: macos-14
+    # Heavier than the other jobs (needs flutter test -d macos) — only
+    # gate this on the cheaper checks passing first.
+    needs: [shotgun-cli, flutter-examples]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.41.x"
+          cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install shotgun_cli
+        run: pip install -e packages/shotgun_cli
+
+      - name: Pub get
+        run: flutter pub get
+        working-directory: examples/notes_app
+
+      - name: shotgun capture
+        run: shotgun capture
+        working-directory: examples/notes_app
+
+      - name: shotgun compose
+        run: shotgun compose
+        working-directory: examples/notes_app
+
+      - name: Verify all 12 raw shots
+        run: |
+          count=$(find shotgun_output -name '*.png' | wc -l | tr -d ' ')
+          if [ "$count" != "12" ]; then
+            echo "expected 12 raw shots, found $count"
+            exit 1
+          fi
+        working-directory: examples/notes_app
+
+      - name: Verify all 12 composed shots
+        run: |
+          count=$(find shotgun_output_composed -name '*.png' | wc -l | tr -d ' ')
+          if [ "$count" != "12" ]; then
+            echo "expected 12 composed shots, found $count"
+            exit 1
+          fi
+        working-directory: examples/notes_app
+
+      - name: Upload composed screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notes_app-composed
+          path: examples/notes_app/shotgun_output_composed/
+          if-no-files-found: error
