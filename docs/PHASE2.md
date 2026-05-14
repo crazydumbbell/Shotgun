@@ -257,8 +257,17 @@ Extract Phase 1 `capture.py` logic into `backends/macos_host.py` behind the new 
 - `_start_flutter_run` gained `extra_dart_defines: dict[str, str]`. Shotgun-managed keys take precedence over user-supplied collisions (otherwise the loop value gets silently shadowed and every shot renders the same locale).
 - 6 new unit tests in `tests/test_ios_sim_backend.py` lock in the contract: one flutter-run per locale, every invocation carries `SHOTGUN_LOCALE=<lang>`, user dart_defines merge alongside, single-locale path still works. Mocks subprocess.Popen/run + screenshot writes; runs on any host without a real simulator.
 
-**PR-C.3 — extra actions**
-`share_sheet`, `notification`. Probably AppleScript click on share-sheet button selector, and `simctl push` for notifications.
+**PR-C.3 — extra actions — ✅ DONE**
+- Three new `pre_capture` actions in `config.py` whitelist: `notification` (requires `bundle_id` + mapping `payload`), `keyboard_locale` (no params), `share_sheet` (requires string `target`). Validator rejects unknown actions and missing required keys at load time with a path-qualified ValueError.
+- `_dispatch_action(action, udid)` gained three branches plus three module-level helpers in `backends/ios_sim.py`:
+  - `_push_notification(udid, bundle_id, payload)` writes the payload to a temp `.apns` file (simctl's documented happy path) and calls `xcrun simctl push <udid> <bundle> <file>`. Temp file removed in `finally`.
+  - `_press_globe_key()` synthesizes Ctrl-Space via AppleScript — the macOS shortcut iOS Sim bridges to the keyboard globe (🌐) key. Prerequisite: user has ≥2 input sources installed in the simulator's Settings → General → Keyboard → Keyboards.
+  - `_tap_accessibility_button(target)` runs `click (first button whose name is "<target>")` in `tell process "Simulator"`. Inner quotes in `target` are backslash-escaped so AppleScript literals stay well-formed.
+- Each helper swallows osascript / FileNotFound / TimeoutExpired silently — failure means the screenshot still happens, just without the desired UI state. Same best-effort posture as the existing `keyboard_show`.
+- 9 new unit tests cover the surface: 5 in `test_config.py` (positive whitelist + 4 negative validation cases) and 4 in `test_ios_sim_backend.py` (notification cmd shape + payload JSON, keyboard_locale Ctrl-Space, share_sheet accessibility name embedded, quote escaping in target).
+- CONFIG_SCHEMA.md gained a "`pre_capture` actions" section with full reference table and worked examples for each action. README's ios_sim subsection unchanged — the keyboard_locale follow-up from PR-C.2 is now resolvable without rewriting the prose.
+
+**PR-D — Android emulator backend**
 
 **PR-D — Android emulator backend**
 Mirrors `ios_sim` with `adb`, `emulator -avd`, `adb exec-out screencap`. Likely simpler since no status-bar override semantics.

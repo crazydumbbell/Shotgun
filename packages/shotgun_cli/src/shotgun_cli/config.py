@@ -161,17 +161,56 @@ class SceneConfig(BaseModel):
     @field_validator("pre_capture")
     @classmethod
     def _pre_capture_known(cls, v: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        valid_actions = {"keyboard_show", "wait"}
+        # Each entry: required keys (besides "action"). The backend's
+        # `_dispatch_action` trusts these names — config-load is the only
+        # gate. Keep the surface small and predictable.
+        required: dict[str, set[str]] = {
+            "keyboard_show": set(),
+            "wait": {"ms"},
+            # `simctl push <udid> <bundle_id> <payload.json>` — payload is
+            # a small APNs-style dict written to a temp file at dispatch.
+            "notification": {"bundle_id", "payload"},
+            # Toggle iOS software-keyboard input source (globe key).
+            # Requires the user to have ≥2 input sources installed in the
+            # simulator (Settings → General → Keyboard → Keyboards →
+            # Add). The action is a *step* — one press = next source.
+            "keyboard_locale": set(),
+            # AppleScript click on a UI element whose accessibility
+            # `name` matches `target`. Used to open the iOS share sheet
+            # by tapping the share button. Accessibility permission
+            # required (already true for keyboard_show).
+            "share_sheet": {"target"},
+        }
         for i, item in enumerate(v):
             action = item.get("action")
-            if action not in valid_actions:
+            if action not in required:
                 raise ValueError(
                     f"scenes[*].pre_capture[{i}].action {action!r} unknown. "
-                    f"Valid: {', '.join(sorted(valid_actions))}"
+                    f"Valid: {', '.join(sorted(required))}"
+                )
+            missing = required[action] - item.keys()
+            if missing:
+                raise ValueError(
+                    f"scenes[*].pre_capture[{i}] {action!r} missing required "
+                    f"key(s): {', '.join(sorted(missing))}"
                 )
             if action == "wait" and not isinstance(item.get("ms"), int):
                 raise ValueError(
                     f"scenes[*].pre_capture[{i}] wait action needs integer 'ms'"
+                )
+            if action == "notification" and not isinstance(
+                item.get("payload"), dict
+            ):
+                raise ValueError(
+                    f"scenes[*].pre_capture[{i}] notification action needs "
+                    f"a mapping 'payload' (will be serialized to APNs JSON)"
+                )
+            if action == "share_sheet" and not isinstance(
+                item.get("target"), str
+            ):
+                raise ValueError(
+                    f"scenes[*].pre_capture[{i}] share_sheet action needs "
+                    f"a string 'target' (accessibility name of the button)"
                 )
         return v
 

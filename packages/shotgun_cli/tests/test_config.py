@@ -81,3 +81,56 @@ def test_setup_file_optional():
     cfg = ShotgunConfig.model_validate(_base())
     assert cfg.app.setup_file is None
     assert cfg.app.setup_fn == "shotgunSetup"
+
+
+# --- pre_capture action validators (PR-C.3) ------------------------------
+
+def _scene_with_action(action: dict):
+    return _base(scenes=[{"id": "s", "route": "/", "pre_capture": [action]}])
+
+
+def test_pre_capture_known_actions_accepted():
+    for action in (
+        {"action": "keyboard_show"},
+        {"action": "wait", "ms": 400},
+        {"action": "keyboard_locale"},
+        {
+            "action": "notification",
+            "bundle_id": "com.example.app",
+            "payload": {"aps": {"alert": "Hi"}},
+        },
+        {"action": "share_sheet", "target": "Share"},
+    ):
+        ShotgunConfig.model_validate(_scene_with_action(action))
+
+
+def test_pre_capture_unknown_action_rejected():
+    with pytest.raises(ValidationError) as exc:
+        ShotgunConfig.model_validate(_scene_with_action({"action": "tap_xy"}))
+    assert "tap_xy" in str(exc.value)
+
+
+def test_notification_requires_bundle_id_and_payload():
+    with pytest.raises(ValidationError) as exc:
+        ShotgunConfig.model_validate(_scene_with_action(
+            {"action": "notification", "payload": {"aps": {"alert": "x"}}}
+        ))
+    assert "bundle_id" in str(exc.value)
+
+
+def test_notification_payload_must_be_mapping():
+    with pytest.raises(ValidationError) as exc:
+        ShotgunConfig.model_validate(_scene_with_action({
+            "action": "notification",
+            "bundle_id": "com.example.app",
+            "payload": "{\"aps\": {}}",  # string, not a dict
+        }))
+    assert "payload" in str(exc.value)
+
+
+def test_share_sheet_requires_string_target():
+    with pytest.raises(ValidationError) as exc:
+        ShotgunConfig.model_validate(_scene_with_action(
+            {"action": "share_sheet"}
+        ))
+    assert "target" in str(exc.value)

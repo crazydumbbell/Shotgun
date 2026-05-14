@@ -1,16 +1,45 @@
 # shotgun — 현재 상태 (handoff)
 
-작성: 2026-05-15 (PR-C.2 완료). 새 채팅에서 이 파일만 읽어도 어디까지 했고 다음에 뭘 할지 파악 가능하도록.
+작성: 2026-05-15 (PR-C.3 완료). 새 채팅에서 이 파일만 읽어도 어디까지 했고 다음에 뭘 할지 파악 가능하도록.
 
 ---
 
 ## 한 줄 요약
 
-Phase 1 + 1.5 + 실사용자 피드백 4건 + 목업 품질 업그레이드 4건 + **Phase 2 PR-A/B (실제 iOS Simulator backend MVP)** + **PR-C.1 (`pre_capture` DSL — keyboard_show / wait, 시스템 한글 키보드 캡처)** + **PR-C.2 완료 (multi-locale via `--dart-define=SHOTGUN_LOCALE` + `ShotgunLocale.fromEnv()` adapter)** 까지. `shotgun init / capture / compose / compose-grid` 풀 파이프라인이 `shotgun.yaml` 한 장으로 돌아가고, 사실적 device frame (CC0 PommePlate) · 5종 compose preset (`vivid_gradient` / `minimal` / `feature_callout` / `studio` / `dark_studio`) · multi-phone 콜라주 · declarative router hook · iOS status bar normalize · `macos_host` ↔ `ios_sim` 백엔드 분리. notes_app 매트릭스 12/12 회귀 없음 + Python 단위테스트 **38/38** (PR-C.2에서 ios_sim backend 테스트 6개 추가) + contract_analyzer가 진짜 iOS 26.4 시뮬레이터(iPhone 17 Pro Max)에서 9:41/Dynamic Island 포함 **en/ko 2-locale × 3-scene = 6컷** 캡처 성공 (en은 "My contracts / Residential lease...", ko는 "내 계약서 / 주거용 임대차계약서...").
+Phase 1 + 1.5 + 실사용자 피드백 4건 + 목업 품질 업그레이드 4건 + **Phase 2 PR-A/B (실제 iOS Simulator backend MVP)** + **PR-C.1 (`pre_capture` DSL — keyboard_show / wait, 시스템 한글 키보드 캡처)** + **PR-C.2 (multi-locale via `--dart-define=SHOTGUN_LOCALE` + `ShotgunLocale.fromEnv()` adapter)** + **PR-C.3 완료 (`notification` / `keyboard_locale` / `share_sheet` 액션 추가)** 까지. `shotgun init / capture / compose / compose-grid` 풀 파이프라인이 `shotgun.yaml` 한 장으로 돌아가고, 사실적 device frame (CC0 PommePlate) · 5종 compose preset · multi-phone 콜라주 · declarative router hook · iOS status bar normalize · `macos_host` ↔ `ios_sim` 백엔드 분리. notes_app 매트릭스 12/12 회귀 없음 + Python 단위테스트 **47/47** (PR-C.3에서 validator + dispatcher 테스트 9개 추가) + contract_analyzer가 진짜 iOS 26.4 시뮬레이터에서 en/ko 2-locale × 3-scene = 6컷 캡처 성공.
 
 ---
 
-## 다음 채팅에서 이어갈 때 (HANDOFF — 2026-05-15, PR-C.2 완료)
+## 다음 채팅에서 이어갈 때 (HANDOFF — 2026-05-15, PR-C.3 완료)
+
+### PR-C.3 — extra pre_capture 액션 ✅ 완료
+
+**한 줄**: `notification` (simctl push) / `keyboard_locale` (globe key Ctrl-Space) / `share_sheet` (AppleScript accessibility-name click) 세 액션을 `pre_capture` DSL에 추가. config.py validator가 액션-별 필수 키를 잠그고, `_dispatch_action(action, udid)`이 새 udid 인자로 simctl 호출 가능. 47/47 pytest green (validator 5 + dispatcher 4 신규).
+
+**완료 (워킹트리 미커밋):**
+- `packages/shotgun_cli/src/shotgun_cli/config.py` — `_pre_capture_known` validator가 `required: dict[str, set[str]]` 패턴으로 재작성. 각 액션마다 필수 키 집합을 비교, 빈약한 페이로드는 로드 타임에 path-qualified ValueError로 거부.
+- `packages/shotgun_cli/src/shotgun_cli/backends/ios_sim.py` — 새 헬퍼 `_push_notification` (tempfile + simctl push) / `_press_globe_key` (Ctrl-Space osascript) / `_tap_accessibility_button` (quote-escaping + first-button-by-name). `_dispatch_action` 시그니처에 `udid: str` 추가, 세 branch 추가.
+- `packages/shotgun_cli/tests/test_config.py` — 5 신규 (whitelist 양성 + 미지/누락/타입 negative 4).
+- `packages/shotgun_cli/tests/test_ios_sim_backend.py` — 4 신규 (notification cmd + payload JSON, keyboard_locale 키스트로크, share_sheet AppleScript embedding, quote-escape).
+- `docs/CONFIG_SCHEMA.md` — "`pre_capture` actions (ios_sim backend only)" 섹션 + 전체 액션 레퍼런스 표 + 권한 요구사항 노트.
+- `docs/PHASE2.md` — PR-C.3 ✅ DONE 마킹 + 구현 디테일.
+
+**알려진 trickiness:**
+- `keyboard_locale`은 사용자가 시뮬에 ≥2 input source 등록해둔 게 전제. 첫 캡처 전에 Settings → General → Keyboard → Keyboards에서 추가 필요. shotgun 자체는 input source registration을 자동화하지 않음 (`defaults write -g AppleKeyboards`는 sim reboot 필요 — 비용 대비 이득 낮음).
+- `share_sheet`는 사용자 앱이 share 버튼에 명시적 `accessibilityLabel`(또는 Flutter `IconButton(tooltip:)`) 노출해야 매칭. 익명 위젯은 잡히지 않음.
+- `notification` payload는 dict로만 받음 (JSON 문자열 거부). 사용자가 yaml에 inline mapping으로 적는 자연스러운 흐름.
+
+**남은 작업 (다음 채팅 우선순위):**
+1. **PR-C.3 commit**: 사용자 commit 지시 시 단일 커밋. 변경 파일은 위 "완료" 섹션 그대로.
+2. **end-to-end 검증 (선택)**: contract_analyzer에 `notification` / `share_sheet` 시나리오를 추가해 실기 캡처를 한 번 돌릴지. 본인 마케팅 PNG가 필요한 시점에 같이 끼면 좋음 — 지금 강제는 아님 (단위 테스트로 충분히 잠겨 있음).
+3. **PR-D**: Android emulator 백엔드. iOS-sim의 mirror — `adb shell input keyevent`, `adb exec-out screencap`, `emulator -avd`. status-bar override는 없으니 더 간단.
+4. **pub.dev / PyPI 첫 배포**: 로드맵의 "큰 것" — Phase 2가 일단락된 지금이 자연스러운 분기점. 사용자 결정 사항.
+
+### 결정 트레일 (이미 확정된 것, 흔들지 말 것)
+
+- **세 액션 모두 best-effort**: osascript / FileNotFound / Timeout 시 silently swallow. 같은 `keyboard_show` posture. 사유: 캡처는 어쨌든 진행되어야 함, 부분 실패가 매트릭스 전체를 죽이면 시간 낭비.
+- **`_dispatch_action`에 `udid` 추가**: notification 액션이 simctl 호출에 udid 필요. caller(`_capture_one_locale`)가 이미 알고 있으니 그대로 패스. 글로벌 state 회피.
+- **payload는 dict, JSON 문자열 거부**: yaml로 mapping 그대로 쓰는 게 자연스러움. 문자열 받으면 사용자가 JSON quote escape에 시달림.
 
 ### PR-C.2 — ios_sim multi-locale ✅ 완료
 
@@ -84,7 +113,7 @@ PR-C.1 — `pre_capture` DSL ✅ 완료
 - ✅ **PR-B**: iOS sim 백엔드 MVP — boot/status_bar/deeplink/screenshot/teardown
 - ✅ **PR-C.1**: `pre_capture` DSL (`keyboard_show` + `wait`) — 검증 완료
 - ✅ **PR-C.2**: multi-locale (`--dart-define=SHOTGUN_LOCALE` + `ShotgunLocale.fromEnv()` adapter) — en/ko end-to-end 검증 완료
-- ⬜ **PR-C.3**: 추가 액션 (`share_sheet`, `notification`, 후보: `keyboard_locale`)
+- ✅ **PR-C.3**: 추가 액션 (`notification` simctl push / `keyboard_locale` globe key / `share_sheet` accessibility click) — validator + dispatcher 단위테스트 9개로 잠금
 - ⬜ **PR-D**: Android emulator 백엔드 (adb + emulator -avd + screencap)
 
 ### 알려진 trickiness (PR-C 이어갈 때 주의)

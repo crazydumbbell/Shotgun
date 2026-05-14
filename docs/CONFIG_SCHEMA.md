@@ -147,6 +147,49 @@ so it sits inside the rendered phone bezel. It's iOS-only — Android shots are
 left untouched. Your app should leave the top ~44pt (SafeArea) free, otherwise
 the stamp will overlap your content.
 
+## `pre_capture` actions (ios_sim backend only)
+
+Each scene may carry a `pre_capture:` list. The backend runs the actions after the deeplink-driven `openurl` has settled but *before* the screenshot. Actions are executed top-to-bottom on the booted simulator. The `macos_host` backend ignores `pre_capture` entirely.
+
+```yaml
+scenes:
+  - id: search
+    route: /search
+    pre_capture:
+      - { action: keyboard_show }
+      - { action: wait, ms: 400 }
+      - { action: keyboard_locale }              # cycle to next input source
+      - { action: wait, ms: 600 }
+  - id: notif_state
+    route: /inbox
+    pre_capture:
+      - action: notification
+        bundle_id: com.example.contractanalyzer
+        payload:
+          aps:
+            alert:
+              title: "New risk flagged"
+              body: "Your residential lease has 4 risky clauses"
+            badge: 1
+            sound: default
+      - { action: wait, ms: 1400 }               # let banner animate in
+  - id: detail_share
+    route: /contract/1
+    pre_capture:
+      - { action: share_sheet, target: "Share contract" }
+      - { action: wait, ms: 1000 }               # let sheet slide up
+```
+
+| Action | Required keys | What it does |
+| --- | --- | --- |
+| `wait` | `ms` (int) | `time.sleep(ms / 1000)` between actions. |
+| `keyboard_show` | — | Tells Simulator's I/O menu to toggle the software keyboard on. Best-effort: silently no-ops if macOS accessibility permission is missing. |
+| `keyboard_locale` | — | Presses the globe (🌐) key to cycle input sources. **Prerequisite**: user has added ≥2 keyboards in the simulator's Settings → General → Keyboard → Keyboards. The action only advances one step — chain multiple to skip past sources. |
+| `notification` | `bundle_id` (str), `payload` (mapping) | Delivers an APNs banner via `xcrun simctl push`. `payload` is the full APNs body (must contain an `aps` key). Banner takes ~1s to animate in — follow with `wait: ms ≥ 1200`. |
+| `share_sheet` | `target` (str) | Clicks the button whose accessibility name matches `target`. App must expose a recognizable label (Flutter `IconButton(tooltip:)` auto-promotes to accessibility name). Best-effort. |
+
+**Permissions reminder**: `keyboard_show`, `keyboard_locale`, and `share_sheet` rely on AppleScript driving the Simulator UI, which needs macOS Accessibility permission for whichever terminal you run `shotgun` from (System Settings → Privacy & Security → Accessibility). `notification` uses `simctl push` directly and needs no special permission. All four are silent on failure — the screenshot still happens, but without the desired UI state.
+
 ## Resolution order
 
 When the same key is settable at multiple levels:

@@ -22,6 +22,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -242,6 +243,92 @@ def _toggle_software_keyboard() -> None:
         pass
 
 
+def _push_notification(udid: str, bundle_id: str, payload: dict) -> None:
+    """Deliver an APNs-shaped payload to the booted simulator via
+    `simctl push`. Writes the payload to a temp .apns file because
+    simctl's stdin mode only accepts certain shells reliably; file mode
+    is the documented happy path.
+
+    The banner takes ~1s to appear and animates in over ~400ms — callers
+    should follow with a `wait` action of at least 1200ms before the
+    screenshot.
+    """
+    # `simctl push` reads JSON from a file (or stdin) and synthesizes the
+    # APNs envelope. The minimal payload is `{"aps": {"alert": "..."}}`;
+    # we trust the user to provide whatever shape they want under `aps`.
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".apns", delete=False, encoding="utf-8",
+    ) as fh:
+        json.dump(payload, fh)
+        payload_path = fh.name
+    try:
+        _run(["xcrun", "simctl", "push", udid, bundle_id, payload_path])
+    finally:
+        Path(payload_path).unlink(missing_ok=True)
+
+
+def _press_globe_key() -> None:
+    """Toggle iOS software-keyboard input source by pressing the globe
+    (🌐) key. The globe key sits at bottom-left of the on-screen keyboard
+    and cycles through the user's installed keyboards (Settings →
+    General → Keyboard → Keyboards).
+
+    Implementation: synthesize Ctrl-Space, the macOS shortcut iOS Sim
+    bridges to the globe key. Falls back gracefully when accessibility
+    permission is missing.
+
+    Caller must ensure the software keyboard is up first (preceding
+    `keyboard_show` action) — pressing globe without a keyboard does
+    nothing visible.
+    """
+    script = (
+        'tell application "Simulator" to activate\n'
+        'delay 0.2\n'
+        'tell application "System Events" to '
+        'key code 49 using {control down}'  # 49 = Space
+    )
+    try:
+        subprocess.run(
+            ["osascript", "-e", script],
+            check=False, capture_output=True, text=True, timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+
+def _tap_accessibility_button(target: str) -> None:
+    """Click a UI element whose accessibility `name` matches `target` in
+    the currently-frontmost simulator window. Used to open the share
+    sheet by tapping a "Share" button in the user's app.
+
+    AppleScript's `click ... whose name is "<target>"` traverses the
+    accessibility tree of the Simulator process. The target string must
+    match the button's `accessibilityLabel` (or the visible text if no
+    label is set). Best-effort: swallows errors silently — if the button
+    isn't found the screenshot will show the pre-tap state, which is
+    still useful for debugging.
+    """
+    # Escape any embedded double-quotes so the AppleScript literal stays
+    # well-formed even when callers pass selectors with quotes.
+    safe = target.replace('"', '\\"')
+    script = (
+        'tell application "Simulator" to activate\n'
+        'delay 0.2\n'
+        'tell application "System Events"\n'
+        '  tell process "Simulator"\n'
+        f'    click (first button whose name is "{safe}")\n'
+        '  end tell\n'
+        'end tell'
+    )
+    try:
+        subprocess.run(
+            ["osascript", "-e", script],
+            check=False, capture_output=True, text=True, timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+
 def _screenshot(udid: str, out_path: Path) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     _run([
@@ -416,7 +503,7 @@ class IosSimBackend:
                 time.sleep(settle_ms / 1000)
 
                 for action in entry.scene.pre_capture:
-                    self._dispatch_action(action)
+                    self._dispatch_action(action, udid)
 
                 out_path = entry.capture_path(out_root)
                 _screenshot(udid, out_path)
@@ -435,7 +522,7 @@ class IosSimBackend:
                 except subprocess.TimeoutExpired:
                     flutter_proc.kill()
 
-    def _dispatch_action(self, action: dict) -> None:
+    def _dispatch_action(self, action: dict, udid: str) -> None:
         """Run one `scenes[*].pre_capture` action.
 
         Keep this small and predictable: each action should be a thin
@@ -457,6 +544,34 @@ class IosSimBackend:
             # accessibility permission is missing we just dwell.
             _toggle_software_keyboard()
             time.sleep(0.6)
+        elif kind == "keyboard_locale":
+            # Cycle to the next installed software-keyboard input source
+            # via the globe (🌐) key. Requires the user to have added a
+            # second keyboard in the simulator's Settings → General →
+            # Keyboard → Keyboards. We don't pin which language ends up
+            # active — for marketing screenshots the user usually just
+            # needs "not the previous one", and locking on a specific
+            # source would require parsing the language carousel HUD
+            # which iOS doesn't expose.
+            _press_globe_key()
+            time.sleep(0.5)
+        elif kind == "notification":
+            # APNs banner via `simctl push`. Caller is responsible for a
+            # subsequent `wait` action long enough for the banner to
+            # animate in (~1200ms is the safe floor in practice).
+            _push_notification(
+                udid,
+                action["bundle_id"],
+                action["payload"],
+            )
+        elif kind == "share_sheet":
+            # Tap a button whose accessibility name matches `target` to
+            # bring up the iOS share sheet. App is responsible for
+            # exposing a recognizable accessibility label on the share
+            # button (default Flutter `IconButton` already does this if
+            # `tooltip:` is set).
+            _tap_accessibility_button(action["target"])
+            time.sleep(0.8)
         # Validation in config.py guarantees no other kinds reach here.
 
     def _start_flutter_run(

@@ -264,3 +264,103 @@ def test_screenshots_written_per_locale(patched_backend):
     assert len(patched_backend["screenshots"]) == 4
     locales_in_paths = {p.parent.name for p in patched_backend["screenshots"]}
     assert locales_in_paths == {"en", "ko"}
+
+
+# --- PR-C.3 _dispatch_action ----------------------------------------------
+
+def test_dispatch_notification_calls_simctl_push(monkeypatch):
+    """`notification` action must shell out to `simctl push <udid> <bundle>
+    <payload-file>` and write the payload JSON to a temp file."""
+    captured: dict[str, Any] = {}
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["xcrun", "simctl"] and cmd[2] == "push":
+            captured["cmd"] = list(cmd)
+            with open(cmd[5], encoding="utf-8") as fh:
+                captured["payload"] = json.load(fh)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("shotgun_cli.backends.ios_sim.subprocess.run", fake_run)
+    monkeypatch.setattr("shotgun_cli.backends.ios_sim.time.sleep", lambda *_: None)
+
+    IosSimBackend()._dispatch_action(
+        {
+            "action": "notification",
+            "bundle_id": "com.example.app",
+            "payload": {"aps": {"alert": "Hello"}},
+        },
+        udid="UDID-NOTIF",
+    )
+
+    assert captured["cmd"][:5] == [
+        "xcrun", "simctl", "push", "UDID-NOTIF", "com.example.app",
+    ]
+    assert captured["payload"] == {"aps": {"alert": "Hello"}}
+    # Temp file should have been deleted after the simctl call.
+    assert not Path(captured["cmd"][5]).exists()
+
+
+def test_dispatch_keyboard_locale_sends_globe_keystroke(monkeypatch):
+    osascripts: list[str] = []
+
+    def fake_run(cmd, **kwargs):
+        if cmd[0] == "osascript":
+            osascripts.append(cmd[2])
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("shotgun_cli.backends.ios_sim.subprocess.run", fake_run)
+    monkeypatch.setattr("shotgun_cli.backends.ios_sim.time.sleep", lambda *_: None)
+
+    IosSimBackend()._dispatch_action(
+        {"action": "keyboard_locale"}, udid="UDID-KB",
+    )
+
+    assert len(osascripts) == 1
+    # The script must press space with control held (= globe key).
+    assert "key code 49" in osascripts[0]
+    assert "control down" in osascripts[0]
+
+
+def test_dispatch_share_sheet_clicks_by_accessibility_name(monkeypatch):
+    osascripts: list[str] = []
+
+    def fake_run(cmd, **kwargs):
+        if cmd[0] == "osascript":
+            osascripts.append(cmd[2])
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("shotgun_cli.backends.ios_sim.subprocess.run", fake_run)
+    monkeypatch.setattr("shotgun_cli.backends.ios_sim.time.sleep", lambda *_: None)
+
+    IosSimBackend()._dispatch_action(
+        {"action": "share_sheet", "target": "Share contract"},
+        udid="UDID-SHARE",
+    )
+
+    assert len(osascripts) == 1
+    # AppleScript must embed the literal accessibility name.
+    assert '"Share contract"' in osascripts[0]
+    assert "click (first button whose name is" in osascripts[0]
+
+
+def test_dispatch_share_sheet_escapes_quotes_in_target(monkeypatch):
+    """Targets with embedded quotes must not break the AppleScript literal."""
+    osascripts: list[str] = []
+
+    def fake_run(cmd, **kwargs):
+        if cmd[0] == "osascript":
+            osascripts.append(cmd[2])
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("shotgun_cli.backends.ios_sim.subprocess.run", fake_run)
+    monkeypatch.setattr("shotgun_cli.backends.ios_sim.time.sleep", lambda *_: None)
+
+    IosSimBackend()._dispatch_action(
+        {"action": "share_sheet", "target": 'Open "settings"'},
+        udid="UDID-SHARE-Q",
+    )
+
+    assert len(osascripts) == 1
+    # The inner quotes around `settings` must be backslash-escaped so the
+    # outer pair stays balanced.
+    assert '\\"settings\\"' in osascripts[0]

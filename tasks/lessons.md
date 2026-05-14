@@ -36,4 +36,12 @@
 
 ### iOS 시뮬레이터의 software keyboard input source는 app locale과 별개
 - **레슨**: `MaterialApp.locale = en`으로 영어 UI를 캡처해도, `keyboard_show`로 뜨는 시스템 키보드는 시뮬레이터의 **시스템 input source** (Settings → General → Keyboard → Keyboards)를 따른다. ko/en을 둘 다 캡처한 contract_analyzer 검증에서 en search 페이지 본문은 영어로 잘 렌더됐지만 키보드는 한글 두벌식이 그대로 떴음.
-- **규칙**: locale-별로 키보드 종류가 다르게 보여야 하는 사용자(예: en은 QWERTY, ko는 두벌식)는 PR-C.3에서 `keyboard_locale` 액션을 추가하거나, 사용자가 시뮬에 미리 두 input source를 등록하고 shotgun이 globe 키 누름을 자동화하는 방향. 지금은 PR-C.2 범위 밖 — 별도 작업 항목으로 남길 것.
+- **규칙**: locale-별로 키보드 종류가 다르게 보여야 하는 사용자(예: en은 QWERTY, ko는 두벌식)는 PR-C.3에서 `keyboard_locale` 액션을 추가하거나, 사용자가 시뮬에 미리 두 input source를 등록하고 shotgun이 globe 키 누름을 자동화하는 방향. 지금은 PR-C.2 범위 밖 — 별도 작업 항목으로 남길 것. **(PR-C.3에서 `keyboard_locale` 액션으로 구현 완료 — Ctrl-Space로 다음 source 토글)**
+
+### 길이가 다른 리스트끼리 슬라이스 비교는 silent no-match
+- **레슨**: 테스트 mock에서 `if cmd[:3] == ["xcrun", "simctl"]:` 분기를 썼다가 항상 False로 빠짐. `cmd[:3]`는 길이 3, 비교 대상은 길이 2 → 절대 같지 않다. mock의 captured dict가 비어 있는데 테스트 실패 메시지는 `KeyError: 'cmd'`로만 나와서 1차원적으로는 "왜 호출이 안 됐지?"로 보임.
+- **규칙**: 슬라이스로 prefix 매칭을 할 땐 슬라이스 길이와 비교 리터럴 길이를 반드시 일치. 또는 `cmd[0] == "xcrun" and cmd[1] == "simctl"`처럼 인덱스 비교가 명료. 테스트 작성 시 mock이 expected 분기에 실제로 들어갔는지 한 번은 print로 확인할 것 — `captured` 사전이 비었으면 단언이 KeyError로 죽지만 그게 진짜 원인 신호가 아님.
+
+### simctl-driven UI 액션은 best-effort, 사용자 권한 누락 시 silently swallow
+- **레슨**: `keyboard_show` / `keyboard_locale` / `share_sheet`는 osascript로 Simulator의 menu / globe key / button을 누른다. 셋 다 macOS Accessibility 권한이 필요해서 CI나 새 환경에서는 실패 가능. 이걸 raise하면 매트릭스 전체가 죽고, 다른 정상 scene 캡처까지 날아간다.
+- **규칙**: simctl push 같은 권한-불필요 호출은 정상 에러로 raise(자료 누락 등). 반대로 osascript 의존 호출은 `try / except (FileNotFoundError, subprocess.TimeoutExpired): pass`로 일관 swallow. 부분 실패는 스크린샷에 UI 상태가 빠진 형태로 남고, 사용자가 그걸 보고 권한 부여하면 됨 — 매트릭스 전체를 막을 일이 아니다.

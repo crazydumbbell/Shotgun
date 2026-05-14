@@ -44,3 +44,18 @@
 - en/01_list.png: "My contracts / Residential lease..." 정상 영어 렌더, ko/01_list.png: "내 계약서 / 주거용 임대차계약서..." 정상 한국어 렌더, 같은 레이아웃 동일 위치.
 - 관찰된 후속: en 모드의 software 키보드가 한글 두벌식으로 떴음 (시스템 input source는 app locale과 별개). PR-C.3 `keyboard_locale` 액션 후보로 lessons.md / STATUS.md에 기록.
 - 워킹트리에 미커밋 변경분 — 사용자가 commit 지시하면 단일 커밋으로 squash. WIP 커밋 0174a74 위에 별도 커밋이 명료할 듯.
+
+## 2026-05-15 — PR-C.3 extra pre_capture 액션
+
+- [x] **`pre_capture` whitelist 확장** — `config.py`에서 `notification` / `keyboard_locale` / `share_sheet` 추가, 각 액션마다 required keys 집합으로 검증, payload mapping / target string 타입 가드까지
+- [x] **`_dispatch_action` 확장** — 세 branch + 모듈-레벨 헬퍼 3개 (`_push_notification` tempfile + simctl push / `_press_globe_key` Ctrl-Space osascript / `_tap_accessibility_button` quote-escaping). dispatcher 시그니처에 `udid` 추가
+- [x] **단위 테스트 9개 추가** — `test_config.py`에 validator 5건, `test_ios_sim_backend.py`에 dispatcher 4건. 47/47 green
+- [x] **CONFIG_SCHEMA.md** — "pre_capture actions" 섹션 + 전체 액션 레퍼런스 표 + 권한 노트
+- [x] **PHASE2.md** PR-C.3 ✅ DONE 마킹 + 구현 디테일
+
+## Review (PR-C.3)
+
+- 모든 신규 액션이 best-effort posture (osascript / FileNotFound / Timeout silently swallow). 같은 `keyboard_show` 패턴 따름 — 부분 실패가 매트릭스 전체를 죽이지 않음.
+- 첫 작성한 dispatcher 테스트에서 `cmd[:3] == ["xcrun", "simctl"]` 길이 mismatch 버그를 잡았음. 길이 2짜리 리스트를 길이 3 슬라이스와 비교하면 항상 False → 사일런트 no-match. 다른 테스트 헬퍼에 같은 패턴이 없는지 grep으로 확인 완료.
+- end-to-end 시뮬 검증은 의도적으로 스킵 — 단위 테스트가 cmd shape / payload / AppleScript embedding을 정확히 잠갔고, 시뮬 동작 자체는 simctl push / Ctrl-Space / accessibility click 모두 Apple 문서화된 표면. contract_analyzer에서 실제 마케팅 PNG가 필요할 때 자연스럽게 검증될 부분.
+- 워킹트리 미커밋 — 사용자가 commit 지시하면 단일 커밋으로.
