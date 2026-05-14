@@ -59,3 +59,21 @@
 - 첫 작성한 dispatcher 테스트에서 `cmd[:3] == ["xcrun", "simctl"]` 길이 mismatch 버그를 잡았음. 길이 2짜리 리스트를 길이 3 슬라이스와 비교하면 항상 False → 사일런트 no-match. 다른 테스트 헬퍼에 같은 패턴이 없는지 grep으로 확인 완료.
 - end-to-end 시뮬 검증은 의도적으로 스킵 — 단위 테스트가 cmd shape / payload / AppleScript embedding을 정확히 잠갔고, 시뮬 동작 자체는 simctl push / Ctrl-Space / accessibility click 모두 Apple 문서화된 표면. contract_analyzer에서 실제 마케팅 PNG가 필요할 때 자연스럽게 검증될 부분.
 - 워킹트리 미커밋 — 사용자가 commit 지시하면 단일 커밋으로.
+
+## 2026-05-15 — PR-D Android emulator 백엔드 (Phase 2 마지막 PR)
+
+- [x] **`AndroidEmuBackend` 신규** — `backends/android_emu.py`. ios_sim 구조 mirror: `_capture_one_device` → `_capture_one_locale` → per-scene `am start -W -d shotgun://<route> <package>`. SystemUI demo-mode broadcasts로 status bar 9:41/100%/4-bar. screencap을 bytes로 받아 PNG 디스크 라이트.
+- [x] **SDK 도구 resolver** — `_sdk_root()` / `_adb_bin()` / `_emulator_bin()`: ANDROID_HOME → `~/Library/Android/sdk` → PATH 폴백.
+- [x] **이미 부팅된 에뮬레이터 재사용** — `_running_emulator_serial()`로 `emulator-*` 시리얼 발견 시 재부팅 스킵. 개발 루프 ~30s 절약.
+- [x] **`AppConfig.package_id` 추가** — Android applicationId. android_emu에서만 lazy 검증 (`run()` 진입부에서 missing이면 CaptureError).
+- [x] **`_VALID_BACKENDS`에 android_emu 추가** + backends/__init__.py에 등록.
+- [x] **단위 테스트 11개** — `tests/test_android_emu_backend.py`. screencap의 bytes 모드(`subprocess.run` capture_output without text=True)와 일반 텍스트 모드를 라우팅 fake로 분기. multi-locale 루프, dart-define 주입+머지+충돌 시 shotgun 승리, am start URL/package, demo-mode enter/exit 1쌍, package_id/emu_avd missing/unknown reject, 미구현 액션 silent skip+stderr, wait 액션 동작.
+- [x] **example/contract_analyzer에 Android 타겟** — `flutter create --platforms android .`로 android/ 디렉토리 생성, `AndroidManifest.xml`에 `shotgun://` URL scheme intent-filter 추가, `shotgun.yaml`에 commented android device block + `package_id`. boilerplate `test/widget_test.dart` 제거 (잘못된 MyApp 참조).
+- [x] **README + CONFIG_SCHEMA.md + PHASE2.md + STATUS.md + lessons.md 갱신**.
+
+## Review (PR-D)
+
+- pytest 58/58 (47 + 11 신규) green.
+- end-to-end Android 실기 캡처는 의도적으로 미수행 — 본 머신에 등록된 AVD 없음. 단위 테스트가 cmd shape / multi-locale 흐름 / demo-mode pairing / 친절 에러 메시지까지 정확히 잠갔으니 첫 실사용자가 AVD 등록 + `shotgun capture` 한 방이면 자연스럽게 검증될 부분.
+- `flutter analyze` on contract_analyzer 깨끗 (boilerplate test 제거 후 No issues).
+- **Phase 2 완료** — 세 백엔드(macos_host / ios_sim / android_emu) 모두 동작, 같은 yaml로 분기 가능.

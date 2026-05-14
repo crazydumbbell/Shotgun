@@ -1,16 +1,42 @@
 # shotgun — 현재 상태 (handoff)
 
-작성: 2026-05-15 (PR-C.3 완료). 새 채팅에서 이 파일만 읽어도 어디까지 했고 다음에 뭘 할지 파악 가능하도록.
+작성: 2026-05-15 (PR-D 완료, Phase 2 전체 완료). 새 채팅에서 이 파일만 읽어도 어디까지 했고 다음에 뭘 할지 파악 가능하도록.
 
 ---
 
 ## 한 줄 요약
 
-Phase 1 + 1.5 + 실사용자 피드백 4건 + 목업 품질 업그레이드 4건 + **Phase 2 PR-A/B (실제 iOS Simulator backend MVP)** + **PR-C.1 (`pre_capture` DSL — keyboard_show / wait, 시스템 한글 키보드 캡처)** + **PR-C.2 (multi-locale via `--dart-define=SHOTGUN_LOCALE` + `ShotgunLocale.fromEnv()` adapter)** + **PR-C.3 완료 (`notification` / `keyboard_locale` / `share_sheet` 액션 추가)** 까지. `shotgun init / capture / compose / compose-grid` 풀 파이프라인이 `shotgun.yaml` 한 장으로 돌아가고, 사실적 device frame (CC0 PommePlate) · 5종 compose preset · multi-phone 콜라주 · declarative router hook · iOS status bar normalize · `macos_host` ↔ `ios_sim` 백엔드 분리. notes_app 매트릭스 12/12 회귀 없음 + Python 단위테스트 **47/47** (PR-C.3에서 validator + dispatcher 테스트 9개 추가) + contract_analyzer가 진짜 iOS 26.4 시뮬레이터에서 en/ko 2-locale × 3-scene = 6컷 캡처 성공.
+**Phase 2 전체 완료** — Phase 1 + 1.5 + 실사용자 피드백 4건 + 목업 품질 업그레이드 4건 + PR-A/B (iOS Simulator backend MVP) + PR-C.1 (`pre_capture` DSL — keyboard_show / wait) + PR-C.2 (multi-locale via `--dart-define=SHOTGUN_LOCALE`) + PR-C.3 (`notification` / `keyboard_locale` / `share_sheet`) + **PR-D 완료 (Android emulator 백엔드 — adb + emulator -avd + SystemUI demo mode + screencap)** 까지. `shotgun init / capture / compose / compose-grid` 풀 파이프라인이 `shotgun.yaml` 한 장으로 돌아가고, 사실적 device frame (CC0 PommePlate) · 5종 compose preset · multi-phone 콜라주 · declarative router hook · iOS status bar normalize · 세 백엔드 (`macos_host` / `ios_sim` / `android_emu`) 분리. notes_app 매트릭스 12/12 회귀 없음 + Python 단위테스트 **58/58** (PR-D에서 Android backend 테스트 11개 추가) + contract_analyzer가 진짜 iOS 26.4 시뮬레이터에서 en/ko 2-locale × 3-scene = 6컷 캡처 성공.
 
 ---
 
-## 다음 채팅에서 이어갈 때 (HANDOFF — 2026-05-15, PR-C.3 완료)
+## 다음 채팅에서 이어갈 때 (HANDOFF — 2026-05-15, PR-D 완료)
+
+### PR-D — Android emulator 백엔드 ✅ 완료 (Phase 2 마지막 PR)
+
+**한 줄**: `ios_sim`의 구조적 mirror. `adb` + `emulator -avd` + `am start -W -d shotgun://...` + `adb exec-out screencap -p`. SystemUI demo-mode broadcasts로 status bar normalize (9:41 / 100% / 4-bar wifi). multi-locale은 똑같이 `--dart-define=SHOTGUN_LOCALE` 재시작 패턴.
+
+**완료 (워킹트리 미커밋):**
+- `packages/shotgun_cli/src/shotgun_cli/backends/android_emu.py` (신규) — `AndroidEmuBackend` 클래스. `_capture_one_device` → `_capture_one_locale` → per-scene deeplink 구조는 ios_sim과 동일. 새 헬퍼들: `_sdk_root()` (ANDROID_HOME/ANDROID_SDK_ROOT 우선, macOS 기본 `~/Library/Android/sdk`), `_adb_bin()` / `_emulator_bin()` (SDK 우선 PATH 폴백), `_running_emulator_serial()` (이미 부팅된 에뮬레이터 재사용), `_wait_for_boot()` (sys.boot_completed=1 폴링), `_enable_demo_mode()` / `_disable_demo_mode()` (SystemUI broadcasts), `_open_url()` (am start -W -a VIEW -d <url> <package>), `_screenshot()` (adb exec-out screencap -p → bytes → write).
+- `backends/__init__.py` — registry에 `"android_emu": AndroidEmuBackend()` 추가.
+- `config.py` — `AppConfig.package_id: str | None` 추가 (Android applicationId, am start용). `_VALID_BACKENDS`에 `"android_emu"` 추가. `DeviceSpec.emu_avd`는 이미 prereserved.
+- `cli.py` — `_STARTER_YAML`에 android_emu 옵션 가이드 + `app.package_id` 노트 추가.
+- `packages/shotgun_cli/tests/test_android_emu_backend.py` (신규, 11 tests). 다층 monkeypatch로 subprocess.run / subprocess.Popen / time.sleep / 그리고 screencap의 bytes 모드까지 분기. 잠근 contract: locale마다 flutter run 1회, 각 invocation에 `SHOTGUN_LOCALE=<lang>` 포함, user dart_defines 머지, 충돌 시 shotgun 값 승리, `am start`가 `package_id` + `shotgun://<route>` URL 운반, demo-mode enter/exit 정확히 1쌍, `package_id` / `emu_avd` 누락 friendly error, 알 수 없는 AVD 시 등록된 목록을 에러에 포함, 미구현 액션(`keyboard_show` 등)은 raise 안 하고 stderr 노트만, `wait`는 정상 작동.
+- `examples/contract_analyzer/android/` 생성 (`flutter create --platforms android .`), `AndroidManifest.xml`에 `shotgun://` URL scheme intent-filter 추가, `shotgun.yaml`에 commented android device block + `package_id`. boilerplate `test/widget_test.dart` 제거 (잘못된 root_widget 참조).
+- `docs/CONFIG_SCHEMA.md` — `app.package_id` + `devices.android[].emu_avd` 노출.
+- `docs/PHASE2.md` — PR-D ✅ DONE 마킹.
+- `README.md` — "진짜 에뮬레이터에서 찍고 싶다 — Android" 섹션 신설, ROADMAP 항목에서 "Android emulator" 제거.
+
+**알려진 trickiness (Android 작업 이어갈 때 주의):**
+- **AVD는 shotgun이 만들지 않음**: 사용자가 Android Studio Device Manager에서 한 번 만들어야 함. `avdmanager` CLI로 자동화는 Java 런타임 의존성 + sdkmanager 시스템 이미지 다운로드 비용이 커서 의도적으로 제외.
+- **emulator serial 가정**: `_capture_one_device`가 `_start_emulator()` 호출 후 `emulator-5554`로 하드코딩 (첫 emulator의 기본 serial). 두 번째 emulator를 동시에 띄우면 `-5556`이 되니, multi-emu는 별도 PR 필요. 일단 한 번에 한 AVD만 가정.
+- **demo mode persistence**: SystemUI demo-mode는 데몬 재시작 시 사라짐. shotgun이 항상 `enable` 후 `disable`을 호출하지만, `Ctrl-C`로 중단 시 9:41/100%가 그대로 남을 수 있음. `adb shell am broadcast -a com.android.systemui.demo -e command exit`로 수동 정리 가능.
+- **end-to-end 실기 캡처 미수행**: 단위 테스트는 cmd shape를 정확히 잠갔지만 실제 emulator 부팅 + flutter run + am start 흐름은 본 머신에 등록된 AVD가 없어서 검증 못 함. 첫 실사용자(또는 본인이 Play Store용 PNG 필요할 때)가 자연스럽게 검증할 부분. iOS-sim과 PR-D는 mirror 구조라 큰 회귀는 없을 것으로 봄.
+
+**다음 작업 우선순위 (Phase 2 종료 후 분기점):**
+1. **PR-D commit**: 사용자 commit 지시 시 단일 커밋.
+2. **pub.dev / PyPI 첫 배포 (큰 작업)**: ROADMAP의 "큰 것". `shotgun_runner` Dart pub.dev publish (`pubspec.yaml` description / version / repository 채우기 + `flutter pub publish --dry-run`), `shotgun_cli` PyPI wheel 빌드 (pyproject.toml metadata 보강 + `python -m build`). README의 "git path" 설치 안내를 "pub.dev / pip install shotgun_cli"로 교체.
+3. **Android end-to-end 검증 (선택)**: 사용자가 Play Store용 PNG 필요할 때. 본 머신에 AVD 등록 + `cd examples/contract_analyzer && shotgun capture` 한 번이면 단위 테스트가 잠근 표면이 실기기에서 작동하는지 검증 가능.
 
 ### PR-C.3 — extra pre_capture 액션 ✅ 완료
 
@@ -114,7 +140,9 @@ PR-C.1 — `pre_capture` DSL ✅ 완료
 - ✅ **PR-C.1**: `pre_capture` DSL (`keyboard_show` + `wait`) — 검증 완료
 - ✅ **PR-C.2**: multi-locale (`--dart-define=SHOTGUN_LOCALE` + `ShotgunLocale.fromEnv()` adapter) — en/ko end-to-end 검증 완료
 - ✅ **PR-C.3**: 추가 액션 (`notification` simctl push / `keyboard_locale` globe key / `share_sheet` accessibility click) — validator + dispatcher 단위테스트 9개로 잠금
-- ⬜ **PR-D**: Android emulator 백엔드 (adb + emulator -avd + screencap)
+- ✅ **PR-D**: Android emulator 백엔드 (adb + emulator -avd + SystemUI demo mode + screencap) — 단위테스트 11개로 잠금, 실기 end-to-end는 사용자 AVD 등록 시점에 검증
+
+**Phase 2 완료** 🎉
 
 ### 알려진 trickiness (PR-C 이어갈 때 주의)
 

@@ -4,12 +4,23 @@ app:
   entry: lib/main.dart
   root_widget: ContractAnalyzerApp
   setup_file: integration_test/_shotgun_setup.dart
+  # Only consumed by the android_emu backend (am start needs the bundle
+  # id to skip the disambiguator dialog when multiple apps claim the
+  # shotgun:// scheme). Ignored by ios_sim / macos_host.
+  package_id: com.exchip.contract_analyzer
 
 devices:
   ios:
     - name: "6.7"
       size: [1290, 2796]
       sim_device: "iPhone 17 Pro Max"
+  # To capture on Android instead, switch advanced.backend to
+  # `android_emu` and uncomment this block. The emu_avd value must
+  # match an AVD registered in Android Studio (Tools → Device Manager).
+  # android:
+  #   - name: phone
+  #     size: [1080, 2400]
+  #     emu_avd: Pixel_9_API_36
 
 locales: [en, ko]
 

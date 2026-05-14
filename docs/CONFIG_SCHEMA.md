@@ -26,6 +26,10 @@ app:
   # re-exports are not resolved by codegen, so point it at the real file.
   root_widget_import: "package:my_app/app.dart"
   flavor: null                    # optional flutter --flavor
+  # Android applicationId (the dotted bundle id used by `am start` to
+  # bypass the disambiguator dialog). Required only when
+  # `advanced.backend: android_emu`. Ignored by macos_host / ios_sim.
+  package_id: com.example.myapp
   dart_defines:                   # optional --dart-define key=value pairs
     SHOTGUN_MODE: "true"
   # Optional setup hook for declarative-router apps. Must live under
@@ -54,6 +58,16 @@ devices:
   android:
     - { name: "phone",  size: [1080, 1920] }
     - { name: "tablet", size: [1600, 2560] }
+    # When `advanced.backend: android_emu`, each android entry also needs
+    # `emu_avd:` — the name of an AVD registered in Android Studio
+    # (Tools → Device Manager → Create Device). Required for the
+    # android_emu backend, ignored elsewhere.
+    # - { name: "phone", size: [1080, 2400], emu_avd: "Pixel_9_API_36" }
+
+  # For ios_sim:
+  #   - sim_device: a name from `xcrun simctl list devicetypes`
+  #     (e.g. "iPhone 17 Pro Max")
+  #   - sim_runtime: an iOS runtime identifier; omit for latest.
 
 # Built-in shorthand:
 # devices: { preset: "store_required" }

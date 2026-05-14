@@ -13,6 +13,7 @@ contract every backend implements.
 
 from __future__ import annotations
 
+from .android_emu import AndroidEmuBackend
 from .base import CaptureBackend, CaptureError
 from .ios_sim import IosSimBackend
 from .macos_host import MacosHostBackend
@@ -20,6 +21,7 @@ from .macos_host import MacosHostBackend
 _REGISTRY: dict[str, CaptureBackend] = {
     "macos_host": MacosHostBackend(),
     "ios_sim": IosSimBackend(),
+    "android_emu": AndroidEmuBackend(),
 }
 
 

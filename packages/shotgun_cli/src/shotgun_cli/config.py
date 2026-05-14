@@ -27,6 +27,14 @@ class AppConfig(BaseModel):
     # codegen at the real declaration.
     root_widget_import: str | None = None
     package: str | None = None  # defaults to the Flutter app's package name
+    # Android `applicationId` (the dotted bundle id used by `am start`).
+    # Required when `advanced.backend: android_emu` — without it the
+    # backend can't disambiguate which app should handle a deeplink and
+    # the URL scheme intent silently goes to the system chooser. Ignored
+    # by other backends. Validation lives in `AndroidEmuBackend.run`
+    # rather than here because it's a per-backend requirement, not a
+    # universal one.
+    package_id: str | None = None
     flavor: str | None = None
     dart_defines: dict[str, str] = Field(default_factory=dict)
 
@@ -245,7 +253,7 @@ class StatusBarConfig(BaseModel):
     style: str = "auto"     # "auto" | "light" | "dark"
 
 
-_VALID_BACKENDS = {"macos_host", "ios_sim"}
+_VALID_BACKENDS = {"macos_host", "ios_sim", "android_emu"}
 
 
 class AdvancedConfig(BaseModel):

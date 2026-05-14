@@ -284,12 +284,17 @@ _STARTER_YAML = """\
 # See docs/CONFIG_SCHEMA.md for the full spec.
 
 # Capture backend. Default is `macos_host` (fast, widget-tree only).
-# Uncomment below to use the real iOS Simulator instead — needed for
-# system keyboard, real status bar / Dynamic Island, share sheets, etc.
+# Uncomment below to use a real iOS Simulator or Android emulator
+# instead — needed for system keyboard, real status bar / Dynamic
+# Island / Material 3 system bar, share sheets, etc.
 #
 # advanced:
-#   backend: ios_sim
-#   scheme: shotgun         # URL scheme; register in ios/Runner/Info.plist
+#   backend: ios_sim          # or `android_emu`
+#   scheme: shotgun           # URL scheme; register in Info.plist or AndroidManifest.xml
+#
+# For android_emu, also set:
+#   app.package_id: com.example.myapp          # the Android applicationId
+#   devices.android[*].emu_avd: Pixel_9_API_36  # a registered AVD name
 
 app:
   entry: lib/main.dart
@@ -299,6 +304,7 @@ devices:
   ios:
     - { name: "6.7", size: [1290, 2796] }
   android:
+    # Add `emu_avd: <name>` to this entry when switching to android_emu.
     - { name: "phone", size: [1080, 1920] }
 
 locales: [en]

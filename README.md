@@ -261,12 +261,60 @@ MaterialApp(
 
 ---
 
+## 진짜 에뮬레이터에서 찍고 싶다 — Android (android_emu 백엔드)
+
+iOS-sim과 같은 패턴. `adb` + `emulator -avd`로 실제 에뮬레이터를 부팅해서 Material 3 status bar / 시스템 키보드 / 진짜 폰트 렌더링까지 캡처. Play Store 출시 매트릭스에 필요.
+
+전제 조건:
+- Android Studio가 설치돼 있고 (`ANDROID_HOME` 또는 `~/Library/Android/sdk`)
+- Android Studio에서 AVD를 한 개 이상 만들어둠 (Tools → Device Manager → Create Device)
+- 본인 앱이 Android 빌드 타겟이 있고 (`flutter create --platforms android .` 한 번)
+- `AndroidManifest.xml`의 `<activity>` 안에 `shotgun://` URL scheme intent-filter 등록
+
+```yaml
+# shotgun.yaml
+app:
+  entry: lib/main.dart
+  root_widget: MyApp
+  package_id: com.example.myapp     # Android applicationId (am start 디스앰비규에이션)
+
+devices:
+  android:
+    - name: phone
+      size: [1080, 2400]
+      emu_avd: Pixel_9_API_36       # Android Studio에서 만든 AVD 이름
+
+advanced:
+  backend: android_emu
+  scheme: shotgun
+
+scenes:
+  - id: list
+    route: /
+```
+
+```xml
+<!-- android/app/src/main/AndroidManifest.xml에서 <activity> 안에 추가 -->
+<intent-filter android:autoVerify="false">
+    <action android:name="android.intent.action.VIEW"/>
+    <category android:name="android.intent.category.DEFAULT"/>
+    <category android:name="android.intent.category.BROWSABLE"/>
+    <data android:scheme="shotgun"/>
+</intent-filter>
+```
+
+`shotgun capture` 한 번이면 9:41 status bar / 100% 배터리 / 4-bar wifi가 SystemUI demo-mode로 적용된 상태에서 매 scene이 PNG로 떨어진다. multi-locale은 ios_sim과 동일하게 `ShotgunLocale.fromEnv()` 한 줄 + `MaterialApp.locale`.
+
+> `pre_capture` 액션 중 `keyboard_show` / `keyboard_locale` / `notification` / `share_sheet`는 현재 Android에서 silently 스킵된다 (`wait`만 동작). 같은 yaml을 iOS/Android에 공유해도 validator는 통과 — 단지 Android 캡처에서는 해당 액션이 무시될 뿐. Android 전용 구현은 다음 PR로 예정.
+
+---
+
 ## 더 알아보기
 
 - [docs/CONFIG_SCHEMA.md](docs/CONFIG_SCHEMA.md) — `shotgun.yaml` 전체 옵션 (status bar normalize, scene 필터링, preset 커스터마이즈 등)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 동작 원리 (codegen → entitlements 패치 → flutter test → Pillow 합성)
 - [docs/PHASE2.md](docs/PHASE2.md) — ios_sim 백엔드 설계와 `pre_capture` DSL 레퍼런스
-- [docs/ROADMAP.md](docs/ROADMAP.md) — 앞으로 들어올 것 (Android emulator, pub.dev 배포, GIF 데모)
+- [docs/ROADMAP.md](docs/ROADMAP.md) — 앞으로 들어올 것 (pub.dev / PyPI 배포, GIF 데모, lifestyle preset)
 - [docs/STATUS.md](docs/STATUS.md) — 현재 어디까지 됐는지
 - [examples/notes_app](examples/notes_app) — macos_host 백엔드 레퍼런스 (다국어 3-route)
 - [examples/contract_analyzer](examples/contract_analyzer) — ios_sim 백엔드 레퍼런스 (한글 키보드 포함)

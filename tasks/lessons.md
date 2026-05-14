@@ -45,3 +45,15 @@
 ### simctl-driven UI 액션은 best-effort, 사용자 권한 누락 시 silently swallow
 - **레슨**: `keyboard_show` / `keyboard_locale` / `share_sheet`는 osascript로 Simulator의 menu / globe key / button을 누른다. 셋 다 macOS Accessibility 권한이 필요해서 CI나 새 환경에서는 실패 가능. 이걸 raise하면 매트릭스 전체가 죽고, 다른 정상 scene 캡처까지 날아간다.
 - **규칙**: simctl push 같은 권한-불필요 호출은 정상 에러로 raise(자료 누락 등). 반대로 osascript 의존 호출은 `try / except (FileNotFoundError, subprocess.TimeoutExpired): pass`로 일관 swallow. 부분 실패는 스크린샷에 UI 상태가 빠진 형태로 남고, 사용자가 그걸 보고 권한 부여하면 됨 — 매트릭스 전체를 막을 일이 아니다.
+
+### 백엔드별로 의미가 다른 yaml 필드는 백엔드에서 lazy 검증
+- **레슨**: PR-D에서 `app.package_id`가 `android_emu`에서만 필요하다는 것을 모델링할 때, AppConfig에 `@model_validator`로 "package_id 없으면 reject"를 두면 ios_sim 사용자가 영문도 모르고 거부당한다. 반대로 universally optional로 두면 android_emu 사용자가 `am start`가 잠자코 실패하는 걸 보게 된다.
+- **규칙**: 백엔드별 필수 필드는 `AppConfig`에서 항상 `Optional`로 두고, 각 backend의 `run()` 진입부에서 `if self.name needs X and not config.app.X: raise CaptureError(...)`로 lazy 검증. 단위 테스트로 reject 케이스를 잠가둘 것. 같은 패턴은 `DeviceSpec.emu_avd` / `sim_device`에도 이미 적용됨.
+
+### 미구현 액션은 raise 대신 silently skip + stderr 노트
+- **레슨**: 같은 `shotgun.yaml`을 iOS와 Android에서 공유하고 싶은 사용자에게 `keyboard_show`가 Android에서 raise하면, 액션 한두 개 때문에 매트릭스 분기를 강제하게 된다. 반대로 완전 silent면 사용자가 "왜 키보드가 안 떴지?"로 한참 디버깅.
+- **규칙**: 백엔드별 구현 격차는 (a) config validator는 양쪽 다 통과시키되 (b) 미구현 분기에서는 `print(file=sys.stderr)` 한 줄 + 정상 return. 사용자가 출력을 한 번 보면 "아, 이 액션은 이 백엔드에서 안 도네"가 즉시 명료해진다.
+
+### Android SDK 도구 경로는 ANDROID_HOME → 표준 위치 폴백
+- **레슨**: macOS에서 Android Studio를 설치하면 `~/Library/Android/sdk`에 SDK가 들어가지만 `adb` / `emulator`를 PATH에 자동 추가해주지 않는다. 사용자가 직접 `~/.zshrc`에 `export PATH=$ANDROID_HOME/platform-tools:$PATH`를 적기 전까지는 `which adb`가 실패. shotgun이 `adb`를 PATH에서만 찾으면 첫 실사용자가 곧장 막힘.
+- **규칙**: 외부 도구는 (1) 환경 변수 (`ANDROID_HOME` / `ANDROID_SDK_ROOT`) 확인 (2) macOS 표준 위치 폴백 (3) 그래도 없으면 PATH의 일반 이름 시도, 세 단계 resolver를 두자. `_sdk_root()` / `_adb_bin()` / `_emulator_bin()` 헬퍼가 그 패턴. 동일한 패턴이 `_flutter_bin` / `xcrun` 같은 다른 도구에도 적용 가능.

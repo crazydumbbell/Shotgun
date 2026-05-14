@@ -267,10 +267,15 @@ Extract Phase 1 `capture.py` logic into `backends/macos_host.py` behind the new 
 - 9 new unit tests cover the surface: 5 in `test_config.py` (positive whitelist + 4 negative validation cases) and 4 in `test_ios_sim_backend.py` (notification cmd shape + payload JSON, keyboard_locale Ctrl-Space, share_sheet accessibility name embedded, quote escaping in target).
 - CONFIG_SCHEMA.md gained a "`pre_capture` actions" section with full reference table and worked examples for each action. README's ios_sim subsection unchanged — the keyboard_locale follow-up from PR-C.2 is now resolvable without rewriting the prose.
 
-**PR-D — Android emulator backend**
-
-**PR-D — Android emulator backend**
-Mirrors `ios_sim` with `adb`, `emulator -avd`, `adb exec-out screencap`. Likely simpler since no status-bar override semantics.
+**PR-D — Android emulator backend — ✅ DONE**
+- New `backends/android_emu.py` is a structural mirror of `ios_sim`: `_capture_one_device` (one emulator boot per device) → `_capture_one_locale` (one `flutter run` per locale, restarted to re-evaluate `--dart-define=SHOTGUN_LOCALE`) → per-scene deeplink via `adb shell am start -W -a VIEW -d <url> <package>`. Screencap streams PNG bytes via `adb exec-out screencap -p`.
+- Status-bar normalization uses SystemUI demo-mode broadcasts (`am broadcast -a com.android.systemui.demo`) — enabled once per device, disabled on teardown. Clock / battery / wifi pinned to 9:41 / 100% / 4-bar to match the App Store look.
+- `_sdk_root()` honors `ANDROID_HOME` / `ANDROID_SDK_ROOT`, falling back to `~/Library/Android/sdk` on macOS. `_adb_bin()` / `_emulator_bin()` prefer the SDK copy and fall back to PATH, so users who put `adb` on PATH via brew/asdf still work.
+- AVDs are *not* created by shotgun. The user must register one in Android Studio → Device Manager and name it in `devices.android[].emu_avd`. Friendly error lists available AVDs when the name doesn't match.
+- New `app.package_id` config field — required when `advanced.backend: android_emu` so `am start <package>` skips the disambiguator dialog. Validated lazily inside `AndroidEmuBackend.run` (not at config load) since it's a per-backend requirement.
+- `pre_capture` actions: only `wait` is honored in this PR. iOS-only actions (`keyboard_show`, `keyboard_locale`, `notification`, `share_sheet`) are accepted at config-load time so a shared yaml validates, but silently skipped at runtime with a stderr note. Implementing them on Android needs `adb shell ime`, `adb shell cmd notification post`, and uiautomator — deferred.
+- 11 new unit tests in `tests/test_android_emu_backend.py` mock `adb` / `emulator` / `subprocess.Popen` and lock the contract: multi-locale loop shape, dart-define injection + merge, `am start` URL + package id, demo-mode enter/exit balance, package_id / emu_avd absence rejected, unknown AVD listed in the error, unimplemented actions don't raise.
+- `examples/contract_analyzer/` gained an `android/` build target via `flutter create --platforms android .`, with a `shotgun://` URL-scheme `intent-filter` added to `AndroidManifest.xml`. `shotgun.yaml` ships a commented `android:` device block + `app.package_id` so switching to Android is a 3-line uncomment. End-to-end Android capture not yet run (depends on user having an AVD registered + emulator GPU acceleration on this machine) — left as a TODO for the first user who needs Play Store screenshots.
 
 Each PR ends with the same Definition of Done as Phase 1: full pipeline runs end-to-end against `examples/contract_analyzer`, produces a marketing-ready PNG, no regressions in `pytest packages/shotgun_cli`.
 
