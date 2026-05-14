@@ -11,7 +11,7 @@ devices:
       size: [1290, 2796]
       sim_device: "iPhone 17 Pro Max"
 
-locales: [ko]
+locales: [en, ko]
 
 theme:
   preset: dark_studio
@@ -28,12 +28,14 @@ scenes:
     route: /
     caption:
       ko: "어떤 계약서든\n위험을 한눈에"
+      en: "Spot the risk\nin any contract"
 
   - id: detail
     route: /contract/1
     settle_ms: 1800
     caption:
       ko: "조항별로 꼼꼼하게\n분석해드려요"
+      en: "Every clause,\nthoroughly analyzed"
 
   - id: search
     route: /search
@@ -43,3 +45,4 @@ scenes:
       - { action: wait, ms: 300 }
     caption:
       ko: "한 글자만 쳐도\n바로 찾아드려요"
+      en: "Type one letter,\nfind any contract"

@@ -242,6 +242,23 @@ scenes:
 
 > AppleScript로 시뮬 메뉴를 클릭하는 데 macOS Accessibility 권한이 필요. System Settings → Privacy & Security → Accessibility에서 터미널 허용.
 
+### ios_sim에서 multi-locale 쓰기
+
+`flutter test` 위에서 도는 macos_host와 달리 `flutter run` 위에서 도는 ios_sim에는 test binding이 없어서 `platformDispatcher.locales`를 강제할 수 없다. 대신 shotgun이 `--dart-define=SHOTGUN_LOCALE=<lang>`로 locale을 컴파일타임 상수로 주입하고, 사용자 앱이 그걸 읽어서 `MaterialApp.locale`로 넘긴다. 한 줄 추가:
+
+```dart
+import 'package:shotgun_runner/shotgun_runner.dart';
+
+MaterialApp(
+  locale: ShotgunLocale.fromEnv(),   // ← 이 한 줄
+  localizationsDelegates: AppLocalizations.localizationsDelegates,
+  supportedLocales: AppLocalizations.supportedLocales,
+  home: const Home(),
+);
+```
+
+평소엔 `SHOTGUN_LOCALE`이 비어 있어 `fromEnv()`가 `null`을 반환 → 시스템 locale 폴백. shotgun 캡처 중에만 강제 적용. `locales: [en, ko, ja]`처럼 여러 개 적으면 ios_sim이 locale마다 `flutter run`을 재시작하면서 매 컷을 찍는다 (locale당 incremental rebuild ~10–15초, 시뮬 부팅 ~45초보다 훨씬 쌈).
+
 ---
 
 ## 더 알아보기

@@ -1,55 +1,51 @@
 # shotgun — 현재 상태 (handoff)
 
-작성: 2026-05-14 (PR-C.1 완료). 새 채팅에서 이 파일만 읽어도 어디까지 했고 다음에 뭘 할지 파악 가능하도록.
+작성: 2026-05-15 (PR-C.2 완료). 새 채팅에서 이 파일만 읽어도 어디까지 했고 다음에 뭘 할지 파악 가능하도록.
 
 ---
 
 ## 한 줄 요약
 
-Phase 1 + 1.5 + 실사용자 피드백 4건 + 목업 품질 업그레이드 4건 + **Phase 2 PR-A/B (실제 iOS Simulator backend MVP)** + **PR-C.1 완료 (`pre_capture` DSL — keyboard_show / wait, 시스템 한글 키보드 캡처 검증)** 까지. `shotgun init / capture / compose / compose-grid` 풀 파이프라인이 `shotgun.yaml` 한 장으로 돌아가고, 사실적 device frame (CC0 PommePlate) · 5종 compose preset (`vivid_gradient` / `minimal` / `feature_callout` / `studio` / `dark_studio`) · multi-phone 콜라주 · declarative router hook · iOS status bar normalize · `macos_host` ↔ `ios_sim` 백엔드 분리. notes_app 매트릭스 12/12 회귀 없음 + Python 단위테스트 32/32 + contract_analyzer가 진짜 iOS 26.4 시뮬레이터(iPhone 17 Pro Max)에서 9:41/Dynamic Island/시스템 한글 키보드(✓ 보내기 + 마이크) 포함 list/detail/search 3컷 캡처 성공.
+Phase 1 + 1.5 + 실사용자 피드백 4건 + 목업 품질 업그레이드 4건 + **Phase 2 PR-A/B (실제 iOS Simulator backend MVP)** + **PR-C.1 (`pre_capture` DSL — keyboard_show / wait, 시스템 한글 키보드 캡처)** + **PR-C.2 완료 (multi-locale via `--dart-define=SHOTGUN_LOCALE` + `ShotgunLocale.fromEnv()` adapter)** 까지. `shotgun init / capture / compose / compose-grid` 풀 파이프라인이 `shotgun.yaml` 한 장으로 돌아가고, 사실적 device frame (CC0 PommePlate) · 5종 compose preset (`vivid_gradient` / `minimal` / `feature_callout` / `studio` / `dark_studio`) · multi-phone 콜라주 · declarative router hook · iOS status bar normalize · `macos_host` ↔ `ios_sim` 백엔드 분리. notes_app 매트릭스 12/12 회귀 없음 + Python 단위테스트 **38/38** (PR-C.2에서 ios_sim backend 테스트 6개 추가) + contract_analyzer가 진짜 iOS 26.4 시뮬레이터(iPhone 17 Pro Max)에서 9:41/Dynamic Island 포함 **en/ko 2-locale × 3-scene = 6컷** 캡처 성공 (en은 "My contracts / Residential lease...", ko는 "내 계약서 / 주거용 임대차계약서...").
 
 ---
 
-## 다음 채팅에서 이어갈 때 (HANDOFF — 2026-05-15, PR-C.2 in-progress)
+## 다음 채팅에서 이어갈 때 (HANDOFF — 2026-05-15, PR-C.2 완료)
 
-### 진행 중: PR-C.2 — ios_sim multi-locale 🟡 1/7 완료, 백엔드 미수정
+### PR-C.2 — ios_sim multi-locale ✅ 완료
 
-**한 줄 (내일 아침 컨텍스트):**
-실제 contract_analyzer 사용자 (= 본인) 가 `locales: [en, ko]` + `advanced.backend: ios_sim`로 돌리다 `ios_sim backend currently supports a single locale per run (PR-B). Multi-locale arrives in PR-C.` 에러로 막혔음 (`backends/ios_sim.py:287-291`). PR-C.2 본격 진입 — **설계 결정: B 옵션 (=`--dart-define=SHOTGUN_LOCALE` + runner 헬퍼)**. 부팅 한 번 / `flutter run` 한 번, locale 전환은 ~1초 deeplink 수준이 목표.
+**한 줄**: `--dart-define=SHOTGUN_LOCALE=<lang>` + `ShotgunLocale.fromEnv()` 한 줄 어댑터. ios_sim 백엔드는 locale마다 `flutter run`을 재시작 (cold ~30s, 이후 incremental ~10-15s). contract_analyzer에서 en/ko 6컷 캡처 검증 성공 — en은 영어 UI, ko는 한국어 UI, 같은 레이아웃 같은 위치에 정확히 분기.
 
-**왜 B인가:** A(부팅 시 NSGlobalDomain locale 주입 + 재부팅)는 사용자 앱 무수정이지만 로케일마다 ~45초 부팅 비용. C(하이브리드)는 구현+테스트 2배. 본인 contract_analyzer는 이미 flutter_localizations 세팅돼 있어 `MaterialApp.locale: ShotgunLocale.fromEnv()` 한 줄이면 됨.
+**완료된 것 (워킹트리에 미커밋):**
+- `packages/shotgun_cli/src/shotgun_cli/backends/ios_sim.py` — `_capture_one_device`가 이제 (device → locale → scenes) 3단계. 새 헬퍼 `_capture_one_locale`이 한 (device, locale) 페어마다 `flutter run` 라이프사이클을 담당. single-locale guard 제거.
+- `_start_flutter_run`에 `extra_dart_defines: dict[str, str] | None` 파라미터 추가. shotgun-관리 키가 사용자 키를 덮어쓰도록 머지 순서 `{**user, **shotgun_managed}`.
+- `packages/shotgun_cli/tests/test_ios_sim_backend.py` (신규, 6 tests) — subprocess.run / subprocess.Popen / time.sleep / _screenshot 전부 monkeypatch. 잠가둔 contract: locale마다 flutter run 1회, 매 invocation에 `SHOTGUN_LOCALE=<lang>` 포함, user dart_defines 머지 보존, 사용자가 `SHOTGUN_LOCALE`을 직접 설정했을 때 shotgun이 덮어씀, single-locale 회귀 없음.
+- `examples/contract_analyzer/lib/main.dart` — `import shotgun_runner`, `MaterialApp.locale: ShotgunLocale.fromEnv()` 한 줄, 핵심 헤더/카드/SectionLabel/SummaryCard/RiskBanner 텍스트를 `_tr(context, ko:, en:)` 헬퍼로 분기.
+- `examples/contract_analyzer/pubspec.yaml` — `shotgun_runner`를 dev_dependencies → dependencies로 이동 (production main.dart import).
+- `examples/contract_analyzer/shotgun.yaml` — `locales: [en, ko]`, scene마다 en 캡션 추가.
+- `README.md` — "ios_sim에서 multi-locale 쓰기" 서브섹션. `docs/PHASE2.md` — "Locale switching" 섹션 재작성 (B 옵션 결정 트레일 + 왜 system-level/deeplink 거절했나).
 
-**완료 (커밋 안 됨, 워킹트리에만 있음):**
-- `packages/shotgun_runner/lib/src/shotgun_locale.dart` (신규) — `ShotgunLocale.fromEnv()` / `isActive`. `String.fromEnvironment('SHOTGUN_LOCALE')` 읽어서 `Locale` 반환. `null` 반환이면 시스템 locale 폴백. `ko_KR`, `zh_Hant_HK` 형태 파싱 지원.
-- `packages/shotgun_runner/lib/shotgun_runner.dart` — `ShotgunLocale` export 추가.
+**검증 결과 (2026-05-15):**
+- `shotgun_output/ios/6.7/{en,ko}/{01_list,02_detail,03_search}.png` 6장 모두 생성 (byte size 다름 = 실제 다른 콘텐츠 렌더링).
+- en/01_list.png: "My contracts / 5 analyzed in the last 7 days / Residential lease / Freelance services..." 정상 영어 렌더링.
+- ko/01_list.png: "내 계약서 / 최근 7일 동안 분석한 5건 / 주거용 임대차계약서 / 프리랜서 용역계약서..." 정상 한국어 렌더링.
+- pytest 38/38 green (기존 32 + ios_sim backend 신규 6).
 
-**남은 작업 (내일 우선순위 그대로):**
-1. **ios_sim 백엔드 수정** — `_capture_one_device`가 현재 (device → scenes) 두 단계 그룹핑. 이걸 (device → locale → scenes) 세 단계로 바꾸고, **locale마다 `flutter run`을 재시작** (or 사용자 앱이 `SHOTGUN_LOCALE` 변경에 hot-restart로 반응하도록). 의사 코드:
-   ```python
-   for device in ios_devices:
-       boot_once(device)
-       for locale in config.locales:
-           start_flutter_run(..., dart_defines={"SHOTGUN_LOCALE": locale, **app.dart_defines})
-           wait_for_first_frame()
-           for scene in scenes_for(device):
-               openurl(deeplink(scheme, scene.route))
-               pre_capture_actions(scene)
-               screenshot(udid, out_path_with_locale)
-           terminate(flutter_proc)
-   ```
-2. **single-locale guard 제거**: `backends/ios_sim.py:286-291`.
-3. **`_start_flutter_run` 시그니처에 `extra_dart_defines: dict[str,str]` 추가**, `SHOTGUN_LOCALE`은 거기로. `app.dart_defines`와 머지.
-4. **unit test 추가** — `tests/test_ios_sim_backend.py`(파일 없음, 새로 만들 것). 핵심은 subprocess를 mock해서 (a) locale마다 `flutter run`이 다시 호출됨, (b) `--dart-define=SHOTGUN_LOCALE=<lang>`이 cmd에 포함됨. 실제 simctl 호출은 mocking — CI에서 시뮬 부팅 불가.
-5. **README + PHASE2.md 갱신** — `MaterialApp(locale: ShotgunLocale.fromEnv(), ...)` 한 줄 가이드. README의 "진짜 시뮬레이터에서 찍고 싶다" 섹션 바로 아래 multi-locale 서브섹션.
-6. **contract_analyzer로 end-to-end 검증** — `MaterialApp`에 `locale: ShotgunLocale.fromEnv()` 한 줄 추가 → `shotgun capture` → `shotgun_output/ios/6.7/{en,ko}/03_search.png` 둘 다 생성 + 한글 캡션 / 영어 캡션 각각 나오는지 시각 확인.
-7. **lessons.md 업데이트** — "ios_sim에서는 tester가 없으니 dart-define + 앱 쪽 어댑터가 유일한 합리적 locale 주입 경로" 같은 한 줄.
+**알려진 후속 (PR-C.3 후보):**
+- iOS 시뮬레이터의 software keyboard **input source** (한글 두벌식 vs QWERTY)는 app locale과 별개. en 캡처에서도 키보드는 한글로 떴음. locale-별 키보드 렌더링이 필요하면 PR-C.3에서 `keyboard_locale` 액션 추가하거나 사용자가 시뮬 input source 두 개 등록 후 globe-key 자동화 검토.
 
-### 결정 트레일 (내일 흔들리지 말 것)
+### 결정 트레일 (이미 확정된 것, 흔들지 말 것)
 
-- **A vs B vs C 선택**: B 확정. 사유 위. 만약 한 줄 수정 거부하는 사용자가 나오면 그때 가서 A 추가 — 지금은 over-engineering.
-- **locale 그룹 vs scene 그룹**: locale 그룹이 outer. 사유 — `--dart-define`은 compile-time 상수라 `flutter run` 재시작 없이는 못 바꿈. scene 그룹이 outer면 매 scene마다 flutter 재시작 → 디스아스터.
-- **flutter run 재시작 vs hot-restart**: 재시작. hot-restart는 dart-define을 재평가하지 않음 (이미 컴파일된 상수). 비용 = locale당 ~10-15초 (cold build 한 번 끝난 다음 incremental). 시뮬 부팅 ~45초보다 훨씬 쌈.
-- **runner 헬퍼 위치**: 별도 파일 `src/shotgun_locale.dart`. `shotgun_capture.dart`에 안 합침 — Localizations 책임 분리 + import가 가벼움.
+- **A(system-level AppleLanguages) vs B(dart-define) vs C(하이브리드)**: B 확정. 사유: locale-당 부팅 ~45s 비용 회피, 사용자 앱 1줄 추가만으로 됨. 한 줄 수정 거부 사용자가 나타나면 그때 A 추가.
+- **locale 그룹 vs scene 그룹 (outer)**: locale 그룹 outer. 사유: `--dart-define`은 compile-time 상수라 `flutter run` 재시작 없이는 못 바꿈. 매 scene마다 재시작은 ~10-15s × N 곱하기 디스아스터.
+- **flutter run 재시작 vs hot-restart**: 재시작. hot-restart는 dart-define을 재평가하지 않음.
+- **runner 헬퍼 위치**: 별도 파일 `src/shotgun_locale.dart`. `shotgun_capture.dart`에 안 합침 — Localizations 책임 분리, import 가벼움.
+
+### 다음 작업 우선순위
+
+1. **PR-C.2 commit**: 사용자가 git commit 지시하면 단일 커밋. 변경 파일은 위 "완료된 것" 섹션 그대로. WIP 커밋 0174a74 위에 squash가 깨끗할지, 별도 commit이 깨끗할지는 사용자 판단.
+2. **PR-C.3 — 추가 액션**: `share_sheet`, `notification`. `share_sheet`는 share 버튼 selector를 yaml에 받아서 AppleScript click. `notification`은 `simctl push` 1회. `keyboard_locale` 액션은 위 "후속" 항목 — 우선순위는 사용자 요구 봐서.
+3. **PR-D**: Android emulator 백엔드 (adb + emulator -avd + screencap). iOS-sim의 mirror 구조.
 
 ### 그 이전 (HANDOFF — 2026-05-14, PR-C.1 완료)
 
@@ -87,8 +83,8 @@ PR-C.1 — `pre_capture` DSL ✅ 완료
 - ✅ **PR-A**: 백엔드 ABC 추출 (`backends/{base,macos_host}.py` + `capture.py` dispatcher) — 동작 변화 0
 - ✅ **PR-B**: iOS sim 백엔드 MVP — boot/status_bar/deeplink/screenshot/teardown
 - ✅ **PR-C.1**: `pre_capture` DSL (`keyboard_show` + `wait`) — 검증 완료
-- ⬜ **PR-C.2**: multi-locale (system-level `AppleLanguages` 또는 deeplink query param)
-- ⬜ **PR-C.3**: 추가 액션 (`share_sheet`, `notification`)
+- ✅ **PR-C.2**: multi-locale (`--dart-define=SHOTGUN_LOCALE` + `ShotgunLocale.fromEnv()` adapter) — en/ko end-to-end 검증 완료
+- ⬜ **PR-C.3**: 추가 액션 (`share_sheet`, `notification`, 후보: `keyboard_locale`)
 - ⬜ **PR-D**: Android emulator 백엔드 (adb + emulator -avd + screencap)
 
 ### 알려진 trickiness (PR-C 이어갈 때 주의)

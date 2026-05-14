@@ -34,6 +34,14 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   app_links: ^6.3.2
+  # Production dep because main.dart imports `ShotgunLocale.fromEnv()` to
+  # honor the per-shot locale that the ios_sim backend passes via
+  # `--dart-define=SHOTGUN_LOCALE`. The helper returns null when the
+  # define is unset (normal users), and the rest of shotgun_runner is
+  # only referenced from `integration_test/`, so it tree-shakes away
+  # from release builds.
+  shotgun_runner:
+    path: ../../packages/shotgun_runner
 
 dev_dependencies:
   flutter_test:
@@ -41,8 +49,6 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   integration_test:
     sdk: flutter
-  shotgun_runner:
-    path: ../../packages/shotgun_runner
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

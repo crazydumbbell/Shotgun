@@ -1,13 +1,17 @@
 """iOS Simulator backend.
 
 Boots a real iOS Simulator via `xcrun simctl`, runs the user's app on
-it with `flutter run --release`, and screenshots the simulator's own
-framebuffer per scene. Captures system chrome (status bar, keyboard,
-share sheet) — the things the macOS-host backend physically can't see.
+it with `flutter run`, and screenshots the simulator's own framebuffer
+per scene. Captures system chrome (status bar, keyboard, share sheet)
+— the things the macOS-host backend physically can't see.
 
-PR-B scope: minimum viable. Single locale per run, no `pre_capture`
-DSL yet. Deeplink routing via `simctl openurl`. The `pre_capture` DSL
-and multi-locale arrive in PR-C.
+Multi-locale (PR-C.2): there is no test binding inside `flutter run`,
+so `tester.platformDispatcher.locales` (the macos_host approach) is not
+available. Instead we pass `--dart-define=SHOTGUN_LOCALE=<lang>` and the
+user's `MaterialApp` reads it via `ShotgunLocale.fromEnv()`. Since
+`--dart-define` is a compile-time constant, switching locales requires
+restarting `flutter run`. Loop order: device (outer, one boot) → locale
+(restart flutter run) → scene (cheap deeplinks).
 
 See `docs/PHASE2.md` for the design rationale.
 """
@@ -283,12 +287,6 @@ class IosSimBackend:
         keep_generated: bool = False,
         verbose: bool = False,
     ) -> Path:
-        if len(config.locales) > 1:
-            raise CaptureError(
-                "ios_sim backend currently supports a single locale per "
-                "run (PR-B). Multi-locale arrives in PR-C. Got: "
-                f"{config.locales!r}"
-            )
         if not config.devices.ios:
             raise CaptureError(
                 "ios_sim backend needs at least one ios device entry."
@@ -347,13 +345,50 @@ class IosSimBackend:
         print(f"[shotgun] booting {profile} ({udid[:8]}...)", flush=True)
         _boot_and_wait(udid, config.advanced.boot_timeout_s)
 
-        flutter_proc: subprocess.Popen[str] | None = None
+        # Group entries by locale within this device. SHOTGUN_LOCALE is a
+        # compile-time `--dart-define`, so switching locales requires
+        # restarting `flutter run`. Putting locale on the outer loop keeps
+        # the restart count minimal (== number of locales) and lets each
+        # restart serve every scene for that locale via cheap deeplinks.
+        by_locale: dict[str, list[ShotMatrixEntry]] = {}
+        for entry in entries:
+            by_locale.setdefault(entry.locale, []).append(entry)
+
         try:
             _set_status_bar(udid, time_str=config.advanced.status_bar.time)
+            for locale, locale_entries in by_locale.items():
+                self._capture_one_locale(
+                    config, project_root, out_root, udid, locale,
+                    locale_entries,
+                    flutter_bin=flutter_bin, verbose=verbose,
+                )
+        finally:
+            _clear_status_bar(udid)
+            _restore_hardware_keyboard()
+            # Leave the sim booted — re-running shotgun is much faster
+            # when the next `bootstatus` is a no-op. Users who want a
+            # clean tear-down can `xcrun simctl shutdown all`.
 
+    def _capture_one_locale(
+        self,
+        config: ShotgunConfig,
+        project_root: Path,
+        out_root: Path,
+        udid: str,
+        locale: str,
+        entries: list[ShotMatrixEntry],
+        *,
+        flutter_bin: str,
+        verbose: bool,
+    ) -> None:
+        """One `flutter run` lifecycle for a single (device, locale) pair."""
+        flutter_proc: subprocess.Popen[str] | None = None
+        try:
+            print(f"[shotgun] locale={locale}", flush=True)
             flutter_proc = self._start_flutter_run(
-                project_root, udid, config, flutter_bin=flutter_bin,
-                verbose=verbose,
+                project_root, udid, config,
+                flutter_bin=flutter_bin, verbose=verbose,
+                extra_dart_defines={"SHOTGUN_LOCALE": locale},
             )
             self._wait_for_first_frame(flutter_proc, verbose=verbose)
 
@@ -399,11 +434,6 @@ class IosSimBackend:
                     flutter_proc.wait(timeout=10)
                 except subprocess.TimeoutExpired:
                     flutter_proc.kill()
-            _clear_status_bar(udid)
-            _restore_hardware_keyboard()
-            # Leave the sim booted — re-running shotgun is much faster
-            # when the next `bootstatus` is a no-op. Users who want a
-            # clean tear-down can `xcrun simctl shutdown all`.
 
     def _dispatch_action(self, action: dict) -> None:
         """Run one `scenes[*].pre_capture` action.
@@ -437,8 +467,16 @@ class IosSimBackend:
         *,
         flutter_bin: str,
         verbose: bool,
+        extra_dart_defines: dict[str, str] | None = None,
     ) -> subprocess.Popen[str]:
-        """Launch `flutter run` as a background process on the booted sim."""
+        """Launch `flutter run` as a background process on the booted sim.
+
+        `extra_dart_defines` are merged into `config.app.dart_defines` for
+        this invocation only. Shotgun-managed keys (`SHOTGUN_LOCALE`) take
+        precedence over user-supplied ones with the same name — if the
+        user already sets `SHOTGUN_LOCALE` in their yaml, the multi-locale
+        loop's value is what actually drives rendering.
+        """
         if config.advanced.boot_command:
             cmd = config.advanced.boot_command.split()
         else:
@@ -446,7 +484,8 @@ class IosSimBackend:
             # support in the Simulator runtime), so we run in debug mode.
             # The DartVM service banner doubles as our ready signal.
             cmd = [flutter_bin, "run", "-d", udid]
-            for key, value in config.app.dart_defines.items():
+            merged = {**config.app.dart_defines, **(extra_dart_defines or {})}
+            for key, value in merged.items():
                 cmd.extend(["--dart-define", f"{key}={value}"])
             if config.app.flavor:
                 cmd.extend(["--flavor", config.app.flavor])

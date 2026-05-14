@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:shotgun_runner/shotgun_runner.dart';
 
 final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
 
@@ -76,6 +77,15 @@ class _DeeplinkRouterState extends State<_DeeplinkRouter> {
   Widget build(BuildContext context) => widget.child;
 }
 
+/// Pick a string for the active locale. We don't pull in `intl` /
+/// `flutter_localizations` codegen since the marketing screenshot
+/// example only needs two languages and a handful of headers. Anything
+/// the user sees first (page titles, section labels, the most prominent
+/// list items) lives here; the long-tail body text stays Korean.
+String _tr(BuildContext context, {required String ko, required String en}) {
+  return Localizations.localeOf(context).languageCode == 'en' ? en : ko;
+}
+
 const _bgColor = Color(0xFFF7F4EE);
 const _cardColor = Colors.white;
 const _ink = Color(0xFF1B1B1F);
@@ -118,6 +128,7 @@ class ContractAnalyzerApp extends StatelessWidget {
             displayColor: _ink,
           ),
         ),
+        locale: ShotgunLocale.fromEnv(),
         supportedLocales: const [Locale('ko'), Locale('en')],
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
@@ -154,7 +165,7 @@ class ContractListPage extends StatelessWidget {
         ),
         children: [
           Text(
-            '내 계약서',
+            _tr(context, ko: '내 계약서', en: 'My contracts'),
             style: TextStyle(
               fontSize: 34 * _s,
               fontWeight: FontWeight.w800,
@@ -165,52 +176,84 @@ class ContractListPage extends StatelessWidget {
           ),
           SizedBox(height: 6 * _s),
           Text(
-            '최근 7일 동안 분석한 5건',
+            _tr(
+              context,
+              ko: '최근 7일 동안 분석한 5건',
+              en: '5 analyzed in the last 7 days',
+            ),
             style: TextStyle(fontSize: 15 * _s, color: _muted),
           ),
           SizedBox(height: 22 * _s),
           const _SummaryCard(),
           SizedBox(height: 28 * _s),
-          const _SectionLabel('최근 분석'),
+          _SectionLabel(_tr(context, ko: '최근 분석', en: 'Recent')),
           SizedBox(height: 12 * _s),
-          const _ContractCard(
-            title: '주거용 임대차계약서',
-            party: '강남구 역삼동 · 김민준',
-            date: '오늘',
+          _ContractCard(
+            title: _tr(context, ko: '주거용 임대차계약서', en: 'Residential lease'),
+            party: _tr(
+              context,
+              ko: '강남구 역삼동 · 김민준',
+              en: 'Gangnam-gu Yeoksam · Minjun Kim',
+            ),
+            date: _tr(context, ko: '오늘', en: 'Today'),
             risk: _Risk.high,
-            riskLabel: '위험 4건',
+            riskLabel: _tr(context, ko: '위험 4건', en: '4 risks'),
           ),
           SizedBox(height: 14 * _s),
-          const _ContractCard(
-            title: '프리랜서 용역계약서',
-            party: '에이전시 · 박지윤',
-            date: '어제',
+          _ContractCard(
+            title: _tr(
+              context,
+              ko: '프리랜서 용역계약서',
+              en: 'Freelance services',
+            ),
+            party: _tr(
+              context,
+              ko: '에이전시 · 박지윤',
+              en: 'Agency · Jiyun Park',
+            ),
+            date: _tr(context, ko: '어제', en: 'Yesterday'),
             risk: _Risk.mid,
-            riskLabel: '주의 2건',
+            riskLabel: _tr(context, ko: '주의 2건', en: '2 to review'),
           ),
           SizedBox(height: 14 * _s),
-          const _ContractCard(
-            title: '소프트웨어 라이선스',
+          _ContractCard(
+            title: _tr(
+              context,
+              ko: '소프트웨어 라이선스',
+              en: 'Software license',
+            ),
             party: 'NotionLite Inc.',
-            date: '3일 전',
+            date: _tr(context, ko: '3일 전', en: '3 days ago'),
             risk: _Risk.low,
-            riskLabel: '문제 없음',
+            riskLabel: _tr(context, ko: '문제 없음', en: 'Clean'),
           ),
           SizedBox(height: 14 * _s),
-          const _ContractCard(
-            title: '근로계약서 (수정본)',
-            party: '주식회사 메타랩',
-            date: '5일 전',
+          _ContractCard(
+            title: _tr(
+              context,
+              ko: '근로계약서 (수정본)',
+              en: 'Employment (revised)',
+            ),
+            party: _tr(context, ko: '주식회사 메타랩', en: 'MetaLab Inc.'),
+            date: _tr(context, ko: '5일 전', en: '5 days ago'),
             risk: _Risk.mid,
-            riskLabel: '주의 3건',
+            riskLabel: _tr(context, ko: '주의 3건', en: '3 to review'),
           ),
           SizedBox(height: 14 * _s),
-          const _ContractCard(
-            title: '비밀유지계약서 (NDA)',
-            party: '디지털스튜디오 R',
-            date: '6일 전',
+          _ContractCard(
+            title: _tr(
+              context,
+              ko: '비밀유지계약서 (NDA)',
+              en: 'Non-disclosure (NDA)',
+            ),
+            party: _tr(
+              context,
+              ko: '디지털스튜디오 R',
+              en: 'Digital Studio R',
+            ),
+            date: _tr(context, ko: '6일 전', en: '6 days ago'),
             risk: _Risk.low,
-            riskLabel: '문제 없음',
+            riskLabel: _tr(context, ko: '문제 없음', en: 'Clean'),
           ),
         ],
       ),
@@ -233,7 +276,7 @@ class _SummaryCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '이번 주 위험 신호',
+            _tr(context, ko: '이번 주 위험 신호', en: 'This week\'s risk signal'),
             style: TextStyle(
               fontSize: 14 * _s,
               color: Colors.white.withValues(alpha: .75),
@@ -258,7 +301,7 @@ class _SummaryCard extends StatelessWidget {
               Padding(
                 padding: EdgeInsets.only(bottom: 8 * _s),
                 child: Text(
-                  '건의 위험 조항',
+                  _tr(context, ko: '건의 위험 조항', en: 'risky clauses'),
                   style: TextStyle(
                     fontSize: 18 * _s,
                     color: Colors.white.withValues(alpha: .85),
@@ -275,7 +318,11 @@ class _SummaryCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
-                  '↑ 지난 주 대비 +3',
+                  _tr(
+                    context,
+                    ko: '↑ 지난 주 대비 +3',
+                    en: '↑ +3 vs. last week',
+                  ),
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 13 * _s,
@@ -286,13 +333,25 @@ class _SummaryCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: 20 * _s),
-          const Row(
+          Row(
             children: [
-              _MiniStat(label: '높음', value: '4', dot: _riskHigh),
-              SizedBox(width: 44),
-              _MiniStat(label: '주의', value: '5', dot: _riskMid),
-              SizedBox(width: 44),
-              _MiniStat(label: '안전', value: '12', dot: _riskLow),
+              _MiniStat(
+                label: _tr(context, ko: '높음', en: 'High'),
+                value: '4',
+                dot: _riskHigh,
+              ),
+              const SizedBox(width: 44),
+              _MiniStat(
+                label: _tr(context, ko: '주의', en: 'Watch'),
+                value: '5',
+                dot: _riskMid,
+              ),
+              const SizedBox(width: 44),
+              _MiniStat(
+                label: _tr(context, ko: '안전', en: 'Safe'),
+                value: '12',
+                dot: _riskLow,
+              ),
             ],
           ),
         ],
@@ -476,7 +535,7 @@ class ContractDetailPage extends StatelessWidget {
           ),
           SizedBox(height: 18 * _s),
           Text(
-            '주거용 임대차계약서',
+            _tr(context, ko: '주거용 임대차계약서', en: 'Residential lease'),
             style: TextStyle(
               fontSize: 30 * _s,
               fontWeight: FontWeight.w800,
@@ -487,39 +546,81 @@ class ContractDetailPage extends StatelessWidget {
           ),
           SizedBox(height: 8 * _s),
           Text(
-            '강남구 역삼동 · 보증금 5,000만원 · 월세 110만원',
+            _tr(
+              context,
+              ko: '강남구 역삼동 · 보증금 5,000만원 · 월세 110만원',
+              en: 'Yeoksam · ₩50M deposit · ₩1.1M / mo',
+            ),
             style: TextStyle(fontSize: 15 * _s, color: _muted),
           ),
           SizedBox(height: 22 * _s),
           const _RiskBanner(),
           SizedBox(height: 28 * _s),
-          const _SectionLabel('발견된 위험 조항'),
+          _SectionLabel(
+            _tr(context, ko: '발견된 위험 조항', en: 'Risky clauses found'),
+          ),
           SizedBox(height: 14 * _s),
-          const _ClauseCard(
+          _ClauseCard(
             n: '01',
-            title: '일방적 계약 해지 조항',
-            snippet: '"임대인은 사전 통보 없이 30일 내 계약을 해지할 수 있다."',
+            title: _tr(
+              context,
+              ko: '일방적 계약 해지 조항',
+              en: 'Unilateral termination clause',
+            ),
+            snippet: _tr(
+              context,
+              ko: '"임대인은 사전 통보 없이 30일 내 계약을 해지할 수 있다."',
+              en: '"Landlord may terminate within 30 days without prior notice."',
+            ),
             risk: _Risk.high,
-            riskLabel: '높음',
-            reason: '주택임대차보호법 제6조에 반함',
+            riskLabel: _tr(context, ko: '높음', en: 'High'),
+            reason: _tr(
+              context,
+              ko: '주택임대차보호법 제6조에 반함',
+              en: 'Conflicts with Housing Lease Protection Act §6',
+            ),
           ),
           SizedBox(height: 14 * _s),
-          const _ClauseCard(
+          _ClauseCard(
             n: '02',
-            title: '과도한 원상복구 의무',
-            snippet: '"임차인은 모든 벽지·바닥재를 신품으로 교체한다."',
+            title: _tr(
+              context,
+              ko: '과도한 원상복구 의무',
+              en: 'Excessive restoration duty',
+            ),
+            snippet: _tr(
+              context,
+              ko: '"임차인은 모든 벽지·바닥재를 신품으로 교체한다."',
+              en: '"Tenant replaces all wallpaper and flooring with new."',
+            ),
             risk: _Risk.high,
-            riskLabel: '높음',
-            reason: '통상의 사용에 따른 마모는 제외해야 함',
+            riskLabel: _tr(context, ko: '높음', en: 'High'),
+            reason: _tr(
+              context,
+              ko: '통상의 사용에 따른 마모는 제외해야 함',
+              en: 'Ordinary wear and tear must be excluded',
+            ),
           ),
           SizedBox(height: 14 * _s),
-          const _ClauseCard(
+          _ClauseCard(
             n: '03',
-            title: '관할 법원 편향',
-            snippet: '"분쟁 발생 시 임대인 주소지 법원을 관할로 한다."',
+            title: _tr(
+              context,
+              ko: '관할 법원 편향',
+              en: 'Biased venue clause',
+            ),
+            snippet: _tr(
+              context,
+              ko: '"분쟁 발생 시 임대인 주소지 법원을 관할로 한다."',
+              en: '"Disputes resolved at the court of the landlord\'s address."',
+            ),
             risk: _Risk.mid,
-            riskLabel: '주의',
-            reason: '소비자 거주지 관할 원칙과 상이',
+            riskLabel: _tr(context, ko: '주의', en: 'Watch'),
+            reason: _tr(
+              context,
+              ko: '소비자 거주지 관할 원칙과 상이',
+              en: 'Differs from consumer-residence venue rule',
+            ),
           ),
           SizedBox(height: 28 * _s),
           Container(
@@ -530,7 +631,7 @@ class ContractDetailPage extends StatelessWidget {
             ),
             child: Center(
               child: Text(
-                '전체 보고서 보기',
+                _tr(context, ko: '전체 보고서 보기', en: 'View full report'),
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 17 * _s,
@@ -577,7 +678,7 @@ class _RiskBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '위험도 높음',
+                  _tr(context, ko: '위험도 높음', en: 'High risk'),
                   style: TextStyle(
                     fontSize: 18 * _s,
                     fontWeight: FontWeight.w800,
@@ -586,7 +687,11 @@ class _RiskBanner extends StatelessWidget {
                 ),
                 SizedBox(height: 3 * _s),
                 Text(
-                  '계약 전 4개 조항을 협의하세요',
+                  _tr(
+                    context,
+                    ko: '계약 전 4개 조항을 협의하세요',
+                    en: 'Renegotiate 4 clauses before signing',
+                  ),
                   style: TextStyle(fontSize: 14 * _s, color: _ink),
                 ),
               ],
@@ -775,7 +880,11 @@ class _ContractSearchPageState extends State<ContractSearchPage> {
                           decoration: InputDecoration(
                             border: InputBorder.none,
                             isCollapsed: true,
-                            hintText: '계약서, 조항, 상대방 검색',
+                            hintText: _tr(
+                              context,
+                              ko: '계약서, 조항, 상대방 검색',
+                              en: 'Search contracts, clauses, parties',
+                            ),
                             hintStyle: TextStyle(
                               fontSize: 16 * _s,
                               color: _muted,
@@ -790,14 +899,13 @@ class _ContractSearchPageState extends State<ContractSearchPage> {
             ],
           ),
           SizedBox(height: 20 * _s),
-          const _SectionLabel('최근 검색'),
+          _SectionLabel(_tr(context, ko: '최근 검색', en: 'Recent searches')),
           SizedBox(height: 10 * _s),
-          for (final term in const [
-            '임대차계약서',
-            '해지 조항',
-            'NDA 비밀유지',
-            '위약금',
-          ])
+          for (final term in _tr(
+            context,
+            ko: '임대차계약서|해지 조항|NDA 비밀유지|위약금',
+            en: 'Residential lease|Termination|NDA|Liquidated damages',
+          ).split('|'))
             Padding(
               padding: EdgeInsets.symmetric(vertical: 6 * _s),
               child: Row(
@@ -815,19 +923,17 @@ class _ContractSearchPageState extends State<ContractSearchPage> {
               ),
             ),
           SizedBox(height: 20 * _s),
-          const _SectionLabel('추천 키워드'),
+          _SectionLabel(_tr(context, ko: '추천 키워드', en: 'Suggested')),
           SizedBox(height: 10 * _s),
           Wrap(
             spacing: 8 * _s,
             runSpacing: 8 * _s,
             children: [
-              for (final kw in const [
-                '주거 임대차',
-                '프리랜서 계약',
-                '근로계약 수정',
-                '법원 관할',
-                '원상복구',
-              ])
+              for (final kw in _tr(
+                context,
+                ko: '주거 임대차|프리랜서 계약|근로계약 수정|법원 관할|원상복구',
+                en: 'Lease|Freelance|Employment|Venue|Restoration',
+              ).split('|'))
                 Container(
                   padding: EdgeInsets.symmetric(
                     horizontal: 14 * _s,

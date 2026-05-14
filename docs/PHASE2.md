@@ -185,12 +185,26 @@ This runs once during `prepare()`. The stamping code in `compose.py` becomes a n
 
 ## Locale switching
 
-iOS simulator doesn't honor `--dart-define=APP_LOCALE`. Two options:
+`flutter test` has a test binding that lets the macos_host backend force `tester.platformDispatcher.locales` per shot. `flutter run` (which ios_sim uses) doesn't — so locale has to be injected from outside the Dart VM.
 
-1. **System-level**: `simctl spawn <udid> defaults write -g AppleLanguages '("ko")'` then restart the app. Slow (3–5s per locale switch).
-2. **App-side**: user wires `Locale` to a `dart-define` or query parameter. `myapp://list?locale=ko` — handled in the deeplink listener.
+**Chosen approach (PR-C.2): `--dart-define=SHOTGUN_LOCALE=<lang>` + app-side adapter.**
 
-We support both. Default is system-level (closest to "real phone"). Power users can use app-side for speed.
+Shotgun ships `ShotgunLocale.fromEnv()` in `shotgun_runner`. User adds one line:
+
+```dart
+MaterialApp(
+  locale: ShotgunLocale.fromEnv(),   // null when SHOTGUN_LOCALE unset
+  ...
+)
+```
+
+The ios_sim backend loops `for locale in config.locales: restart flutter run with SHOTGUN_LOCALE=<locale>`. Because `--dart-define` is a compile-time constant, hot-restart can't re-evaluate it — we have to terminate and re-spawn `flutter run`. The first build is ~30s; subsequent restarts are incremental (~10–15s) since the build cache survives.
+
+**Why not system-level `AppleLanguages` override?** Considered: `simctl spawn <udid> defaults write -g AppleLanguages '("<locale>")'` followed by a sim reboot. Pros: zero user-app changes. Cons: ~45s reboot per locale (vs. ~10–15s incremental flutter rebuild). For the contract_analyzer reference (already wired for `flutter_localizations`), the one-line app change is the right tradeoff. Reserve system-level as a future opt-in when a user explicitly refuses to touch their app.
+
+**Why not deeplink query param (`myapp://search?locale=ko`)?** Forces every deeplink listener in the user app to plumb locale through the routing layer. Far more invasive than a one-line `MaterialApp.locale` change.
+
+**Loop ordering**: (device → locale → scene). Locale is outer-of-flutter-run because dart-define switching requires a process restart. Scene is innermost because deeplinks are cheap (~1s each). Reversing this would multiply the flutter-run restart cost by `len(scenes)`.
 
 ## Per-shot performance budget
 
@@ -237,8 +251,11 @@ Extract Phase 1 `capture.py` logic into `backends/macos_host.py` behind the new 
 - `contract_analyzer` gained a `ContractSearchPage` (autofocus TextField + recent searches + keyword chips) and a `_DeeplinkRouter._handleUri` fix (`popUntil(isFirst)` + `addPostFrameCallback`) so deeplinks landing on a new route don't race the NavigatorState rebuild.
 - Verified: `shotgun capture` on `examples/contract_analyzer/` produces 3 PNGs with system Korean keyboard visible on `03_search.png`, real 9:41 status bar, Dynamic Island. `compose` + `compose-grid` render ±5° rotated 3-phone collage under `dark_studio` preset. `pytest packages/shotgun_cli` 32/32 green.
 
-**PR-C.2 — multi-locale**
-System-level `AppleLanguages` switching, or app-side `?locale=ko` query param honored by the deeplink listener. Locale-aware status bar overrides where applicable.
+**PR-C.2 — multi-locale — ✅ DONE**
+- `ShotgunLocale.fromEnv()` helper in `shotgun_runner` reads `String.fromEnvironment('SHOTGUN_LOCALE')` and returns a `Locale?`. User wires it once into `MaterialApp.locale`. Returns `null` when unset → app falls back to system locale.
+- `IosSimBackend._capture_one_device` now groups by locale internally and delegates each locale to `_capture_one_locale`, which restarts `flutter run` with `--dart-define=SHOTGUN_LOCALE=<lang>`. Status-bar override and hardware-keyboard restoration still happen exactly once per device.
+- `_start_flutter_run` gained `extra_dart_defines: dict[str, str]`. Shotgun-managed keys take precedence over user-supplied collisions (otherwise the loop value gets silently shadowed and every shot renders the same locale).
+- 6 new unit tests in `tests/test_ios_sim_backend.py` lock in the contract: one flutter-run per locale, every invocation carries `SHOTGUN_LOCALE=<lang>`, user dart_defines merge alongside, single-locale path still works. Mocks subprocess.Popen/run + screenshot writes; runs on any host without a real simulator.
 
 **PR-C.3 — extra actions**
 `share_sheet`, `notification`. Probably AppleScript click on share-sheet button selector, and `simctl push` for notifications.

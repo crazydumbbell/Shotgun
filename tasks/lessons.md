@@ -19,3 +19,21 @@
 ### 실패는 한 줄로 먼저 요약하라
 - **레슨**: Flutter widget tree 에러는 800+ 프레임짜리 raw stack을 토해낸다. 사용자 입장에서는 "어떤 shot, 어떤 widget, 무엇이 실패했나"가 stack frame 0번이 아닌 그 위 framework preamble 한 줄에 있다.
 - **규칙**: subprocess 출력을 스트리밍 파싱해서 (a) 실패한 shot ID (`+N -1 : <id> [E]` 라인)와 (b) 첫 framework error 라인(`#0` stack frame은 스킵)을 골라 종료 직전 stderr에 한 줄로 출력. raw stack은 그대로 유지 — 요약은 *추가*이지 *대체*가 아님.
+
+## 2026-05-15
+
+### `flutter run` 위의 백엔드에서 locale을 강제하는 유일한 합리적 경로는 `--dart-define` + 앱-쪽 어댑터
+- **레슨**: macos_host 백엔드는 `flutter test` 위에서 돌아서 `tester.platformDispatcher.localesTestValue`를 강제할 수 있지만, ios_sim 백엔드는 `flutter run`이라 test binding이 없다. simctl로 `defaults write -g AppleLanguages '("ko")'` + 시뮬 재부팅 (~45초)도 가능하지만, 사용자 앱이 이미 `flutter_localizations` 세팅돼 있다면 `--dart-define=SHOTGUN_LOCALE=<lang>` + `MaterialApp.locale: ShotgunLocale.fromEnv()` 한 줄이 훨씬 싸다 (incremental rebuild ~10-15s vs. 부팅 ~45s).
+- **규칙**: 시뮬레이터 백엔드에서 locale 같은 "앱이 시작 전에 알아야 하는" 값을 주입할 때는 (a) 사용자 앱에 1줄 어댑터를 두고 (b) shotgun이 dart-define으로 값을 넘기는 패턴이 디폴트. 시스템-레벨 우회는 사용자가 앱 수정을 명시적으로 거부할 때만 추가.
+
+### dart-define으로 locale을 바꾸려면 flutter run을 재시작해야 한다
+- **레슨**: `String.fromEnvironment(...)`는 컴파일타임 상수. hot-restart는 dart-define을 재평가하지 않는다 — 이미 인라이닝된 상수를 들고 다닌다. 그래서 locale 그룹을 inner loop로 두면 시각적으로는 바뀌지 않는다 (silent bug).
+- **규칙**: 컴파일타임 dart-define로 주입하는 값은 매 변경마다 프로세스 재시작이 필수. 루프 구조는 항상 (device → locale → scenes) — locale이 outer-of-flutter-run, scene은 cheap deeplinks로 inner. 반대로 두면 매 scene마다 ~10-15s 재빌드가 곱해진다.
+
+### 사용자 dart_defines와 shotgun-관리 키가 충돌할 때 shotgun 값이 이긴다
+- **레슨**: 사용자가 yaml의 `app.dart_defines`에 `SHOTGUN_LOCALE`을 직접 적어두면(실수든 의도든), `{**user, **shotgun_managed}` 순서가 아니면 shotgun의 per-locale 루프 값이 사용자 값으로 덮여서 매 컷이 같은 locale로 렌더된다 (silent no-op).
+- **규칙**: dart_defines 같은 dict를 머지할 때, shotgun-관리 키가 **마지막에** 들어가도록. 단위 테스트에 사용자가 키를 미리 설정한 케이스(`SHOTGUN_LOCALE=fr`)를 명시적으로 잠가둘 것.
+
+### iOS 시뮬레이터의 software keyboard input source는 app locale과 별개
+- **레슨**: `MaterialApp.locale = en`으로 영어 UI를 캡처해도, `keyboard_show`로 뜨는 시스템 키보드는 시뮬레이터의 **시스템 input source** (Settings → General → Keyboard → Keyboards)를 따른다. ko/en을 둘 다 캡처한 contract_analyzer 검증에서 en search 페이지 본문은 영어로 잘 렌더됐지만 키보드는 한글 두벌식이 그대로 떴음.
+- **규칙**: locale-별로 키보드 종류가 다르게 보여야 하는 사용자(예: en은 QWERTY, ko는 두벌식)는 PR-C.3에서 `keyboard_locale` 액션을 추가하거나, 사용자가 시뮬에 미리 두 input source를 등록하고 shotgun이 globe 키 누름을 자동화하는 방향. 지금은 PR-C.2 범위 밖 — 별도 작업 항목으로 남길 것.
