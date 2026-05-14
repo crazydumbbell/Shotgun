@@ -1,8 +1,20 @@
 name: shotgun_runner
-description: Drives shotgun's screenshot capture from inside a Flutter app's integration_test. Add as a dev_dependency.
-version: 0.0.1
+description: >-
+  Capture App Store / Play Store screenshots of a Flutter app from
+  `integration_test`. Pairs with the `shotgun` Python CLI that drives
+  matrix iteration (device × locale × scene).
+version: 0.1.0
 homepage: https://github.com/crazydumbbell/Shotgun
 repository: https://github.com/crazydumbbell/Shotgun
+issue_tracker: https://github.com/crazydumbbell/Shotgun/issues
+documentation: https://github.com/crazydumbbell/Shotgun/blob/main/README.md
+
+topics:
+  - screenshot
+  - integration-test
+  - app-store
+  - localization
+  - testing
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

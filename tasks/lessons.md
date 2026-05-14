@@ -57,3 +57,7 @@
 ### Android SDK 도구 경로는 ANDROID_HOME → 표준 위치 폴백
 - **레슨**: macOS에서 Android Studio를 설치하면 `~/Library/Android/sdk`에 SDK가 들어가지만 `adb` / `emulator`를 PATH에 자동 추가해주지 않는다. 사용자가 직접 `~/.zshrc`에 `export PATH=$ANDROID_HOME/platform-tools:$PATH`를 적기 전까지는 `which adb`가 실패. shotgun이 `adb`를 PATH에서만 찾으면 첫 실사용자가 곧장 막힘.
 - **규칙**: 외부 도구는 (1) 환경 변수 (`ANDROID_HOME` / `ANDROID_SDK_ROOT`) 확인 (2) macOS 표준 위치 폴백 (3) 그래도 없으면 PATH의 일반 이름 시도, 세 단계 resolver를 두자. `_sdk_root()` / `_adb_bin()` / `_emulator_bin()` 헬퍼가 그 패턴. 동일한 패턴이 `_flutter_bin` / `xcrun` 같은 다른 도구에도 적용 가능.
+
+### pub.dev / PyPI 사전 검증은 dry-run + twine check로 잠금
+- **레슨**: `flutter pub publish --dry-run`은 패키지 구조 / pubspec.yaml 형태 / 메타데이터 / 워킹트리 청결도까지 한 번에 검증하고, `twine check dist/*`는 wheel/sdist의 README가 PyPI 렌더러에서 안전한지(reStructuredText / Markdown 문법 충돌) 확인한다. 둘 다 실제 publish 전에 비대칭적으로 큰 가치 — publish는 한 번 잘못 올리면 정정이 어렵고 yank 흔적이 남음.
+- **규칙**: 새 버전 publish 전엔 (a) `pub publish --dry-run` (b) `python -m build && twine check dist/*` 둘 다 통과. 워킹트리 변경분이 있어 dry-run이 1 warning을 띄우는 건 정상 — 커밋 후엔 사라짐. `Development Status :: 4 - Beta` 같은 trove classifier는 PyPI 카테고리 필터에 잡히니 실제 단계에 맞게 갱신.

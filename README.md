@@ -41,7 +41,13 @@ VSCode 터미널 열고 (`Ctrl+`` ` 또는 Cmd+J):
 ```bash
 python3 -m venv ~/.shotgun-venv
 source ~/.shotgun-venv/bin/activate
+
+# 곧 PyPI에 올라옴 — 그때는 아래 한 줄이면 충분:
+# pip install shotgun-cli
+
+# 그때까지는 git 경로:
 pip install "git+https://github.com/crazydumbbell/Shotgun.git#subdirectory=packages/shotgun_cli"
+
 shotgun --help
 ```
 
@@ -59,6 +65,7 @@ dev_dependencies:
     sdk: flutter
 
   # 아래 두 개 추가 ↓
+  # pub.dev publish 후엔: shotgun_runner: ^0.1.0
   shotgun_runner:
     git:
       url: https://github.com/crazydumbbell/Shotgun.git

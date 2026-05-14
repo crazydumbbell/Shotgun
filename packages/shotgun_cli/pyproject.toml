@@ -4,20 +4,39 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shotgun-cli"
-version = "0.0.1"
-description = "Generate App Store / Play Store screenshots for Flutter apps."
+version = "0.1.0"
+description = "Generate App Store / Play Store screenshots for Flutter apps — matrix iteration (device × locale × scene) with iOS Simulator / Android emulator / macOS-host backends."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "shotgun contributors" }]
-keywords = ["flutter", "screenshots", "app-store", "play-store", "mockup"]
+keywords = [
+    "flutter",
+    "screenshots",
+    "app-store",
+    "play-store",
+    "mockup",
+    "ios-simulator",
+    "android-emulator",
+    "integration-test",
+    "localization",
+]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Graphics",
     "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Testing",
 ]
 dependencies = [
     "click>=8.1",
@@ -30,6 +49,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "build>=1.0",
+    "twine>=5.0",
 ]
 
 [project.scripts]
@@ -38,6 +59,9 @@ shotgun = "shotgun_cli.cli:main"
 [project.urls]
 Homepage = "https://github.com/crazydumbbell/Shotgun"
 Repository = "https://github.com/crazydumbbell/Shotgun"
+Issues = "https://github.com/crazydumbbell/Shotgun/issues"
+Documentation = "https://github.com/crazydumbbell/Shotgun/blob/main/README.md"
+Changelog = "https://github.com/crazydumbbell/Shotgun/blob/main/packages/shotgun_cli/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]

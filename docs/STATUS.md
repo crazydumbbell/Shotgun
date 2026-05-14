@@ -10,7 +10,29 @@
 
 ---
 
-## 다음 채팅에서 이어갈 때 (HANDOFF — 2026-05-15, PR-D 완료)
+## 다음 채팅에서 이어갈 때 (HANDOFF — 2026-05-15, PR-D + 배포 준비 완료)
+
+### PR-E.1 — pub.dev / PyPI 배포 준비 ✅ 완료 (publish 직전 단계까지)
+
+**한 줄**: `shotgun_runner`는 `flutter pub publish --dry-run` 통과 (warning 1건은 untracked 변경분 안내, 커밋 후 사라짐). `shotgun_cli`는 `python -m build` + `twine check dist/*` 둘 다 PASSED. 두 패키지 모두 0.1.0 버전, LICENSE / CHANGELOG / 보강된 README / 메타데이터(topics, classifiers, project URLs) 갖춤.
+
+**남은 actual publish 단계 (사용자 계정 필요):**
+1. `cd packages/shotgun_runner && flutter pub publish` — pub.dev 계정 OAuth 로그인 후 게시. 첫 publish는 패키지 이름 영속적 reservation.
+2. `cd packages/shotgun_cli && rm -rf dist && python -m build && twine upload dist/*` — PyPI 계정 + API 토큰 필요. test.pypi.org에 먼저 올려보는 게 안전 (`twine upload --repository testpypi dist/*`).
+3. publish 후 README의 git-path 안내를 `pip install shotgun-cli` / `shotgun_runner: ^0.1.0`으로 본격 전환. 현재 README는 "곧 PyPI에 올라옴" 병기 상태.
+
+### Android end-to-end 검증 ⚠️ 부분 (AVD 등록 필요)
+
+**상황**: 본 머신의 `emulator -list-avds` 출력이 비어 있음 (등록된 AVD 0개). PR-D 단위 테스트 11개가 cmd shape / multi-locale 흐름 / demo-mode pairing / 친절 에러까지 잠갔지만, 진짜 emulator 부팅 + flutter run + screencap 흐름은 검증되지 않은 상태. 시스템 이미지 다운로드 (~1GB+)가 필요해 자동화 부적절 — 사용자가 Android Studio에서 한 번 AVD를 만들면 그 뒤는:
+
+```bash
+cd examples/contract_analyzer
+# shotgun.yaml에서 android: 블록 uncomment + advanced.backend: android_emu로 변경
+shotgun capture        # → shotgun_output/android/phone/{en,ko}/{01_list,02_detail,03_search}.png
+shotgun compose        # → 컴포지트 PNG
+```
+
+iOS-sim과 PR-D는 구조적 mirror라 단위 테스트가 잠근 표면은 실기기에서 거의 그대로 작동할 것으로 예상되지만 — 첫 실기 캡처에서 정확한 byte size / status bar 9:41 렌더링 / Korean 텍스트 분기를 ksoul check해서 commit. 모든 시나리오가 동작하면 STATUS의 이 절을 ✅로 변경.
 
 ### PR-D — Android emulator 백엔드 ✅ 완료 (Phase 2 마지막 PR)
 

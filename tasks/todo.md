@@ -77,3 +77,25 @@
 - end-to-end Android 실기 캡처는 의도적으로 미수행 — 본 머신에 등록된 AVD 없음. 단위 테스트가 cmd shape / multi-locale 흐름 / demo-mode pairing / 친절 에러 메시지까지 정확히 잠갔으니 첫 실사용자가 AVD 등록 + `shotgun capture` 한 방이면 자연스럽게 검증될 부분.
 - `flutter analyze` on contract_analyzer 깨끗 (boilerplate test 제거 후 No issues).
 - **Phase 2 완료** — 세 백엔드(macos_host / ios_sim / android_emu) 모두 동작, 같은 yaml로 분기 가능.
+
+## 2026-05-15 — PR-E.1 배포 준비 (pub.dev / PyPI)
+
+- [x] **shotgun_runner pubspec.yaml 보강** — 0.0.1 → 0.1.0, description 다듬기, `homepage` / `repository` / `issue_tracker` / `documentation`, `topics: [screenshot, integration-test, app-store, localization, testing]`
+- [x] **shotgun_runner LICENSE / CHANGELOG.md / README.md** — pub.dev 점수 항목 충족. README는 quick install + multi-locale 예제 + go_router 예제 + 링크 구조로 재작성
+- [x] **flutter pub publish --dry-run PASS** — 워킹트리 변경분 1 warning만 (커밋 후 사라짐, publish 차단 아님)
+- [x] **shotgun_cli pyproject.toml 보강** — 0.0.1 → 0.1.0, description 한 줄→풀, keywords 추가 (ios-simulator, android-emulator, integration-test, localization), classifiers 보강 (Development Status :: 4 - Beta, Python 3.10–3.13, MacOS / Linux OS, Topic :: Multimedia :: Graphics + Testing), project URLs 추가 (Issues / Documentation / Changelog), optional-dependencies dev에 build / twine 추가
+- [x] **shotgun_cli LICENSE / CHANGELOG.md / README.md** — README는 quick install + 백엔드 선택 + capabilities 목록 + 링크 구조로 재작성
+- [x] **python -m build + twine check PASSED** — sdist (`shotgun_cli-0.1.0.tar.gz`) + wheel (`shotgun_cli-0.1.0-py3-none-any.whl`) 둘 다 통과. android_emu / ios_sim / macos_host / assets / tests 모두 포함
+- [x] **루트 README.md** — install 안내에 "곧 PyPI / pub.dev" 병기. publish 후 본격 전환
+
+## Review (PR-E.1)
+
+- 실제 publish는 사용자 pub.dev / PyPI 계정 OAuth 필요 — 본 세션에서 진행 불가. dry-run + twine check로 publish 직전까지 완료.
+- pyproject의 trove classifier `Development Status :: 4 - Beta`로 변경 (Phase 2 완료된 시점이라 Pre-Alpha 아님).
+- shotgun_cli wheel은 6KB가 아닌 wheel 본체에 모든 코드 + CC0 PommePlate device frame PNG 3개 + tests를 포함. 첫 publish 후 wheel size 확인 필요 (몇 MB일 수 있음).
+
+## 2026-05-15 — Android end-to-end 검증 ⚠️ 부분
+
+- [x] AVD 등록 여부 재확인 — `emulator -list-avds` 빈 출력. 본 머신에 AVD 없음.
+- [ ] **사용자 작업 필요**: Android Studio → Tools → Device Manager → Create Device → 시스템 이미지 다운로드 (~1GB+). 시스템 이미지 다운로드는 자동화 부적절.
+- [ ] AVD 등록 후 `cd examples/contract_analyzer && shotgun capture` 한 번이면 PR-D 표면 실기 검증 완료. 정상 작동 시 STATUS.md의 "Android end-to-end" 섹션을 ✅로 전환.
